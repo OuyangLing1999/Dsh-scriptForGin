@@ -399,7 +399,7 @@ async function readDocxText(input, inflate) {
 
 return {buildDocxBytes,readDocxText};
 })();
-    const CURRENT_VERSION = '2.3.0';
+    const CURRENT_VERSION = '2.3.1';
 const REPOSITORY = 'OuyangLing1999/Dsh-scriptForGin';
 
 function compareVersions(left, right) {
@@ -542,7 +542,7 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"ä¸º60å²
     function Button({ children, onClick, disabled, primary, ...props }) {
       return h('button', { type: 'button', onClick, disabled, style: {
         padding: '9px 14px', borderRadius: 8, border: '1px solid ' + (primary ? T.brand : T.border),
-        background: primary ? T.brand : T.layer2, color: T.text, cursor: disabled ? 'wait' : 'pointer', opacity: disabled ? .55 : 1,
+        background: primary ? T.brand : T.layer2, color: primary ? 'var(--dsw-alias-bg-base)' : T.text, cursor: disabled ? 'wait' : 'pointer', opacity: disabled ? .55 : 1,
       }, ...props }, children);
     }
     function Field({ label, value = '', onChange, rows, placeholder, ...props }) {
