@@ -230,6 +230,42 @@ export function compareVersions(before, after) {
   return { added, removed, changed: added > 0 || removed > 0, summary: `新增${added}行，移除${removed}行（按行计数，重排不计）` };
 }
 
+// Positional line diff for highlighted version comparison. Falls back to a cheap
+// two-pointer walk when the input is too large for the full LCS table.
+export function diffLines(before, after) {
+  const asLines = value => str(typeof value === 'object' && value ? value.text : value).replace(/\r\n?/g, '\n').split('\n');
+  const a = asLines(before), b = asLines(after);
+  const make = (blocks) => {
+    let added = 0, removed = 0;
+    for (const block of blocks) { if (block.type === 'add') added++; if (block.type === 'remove') removed++; }
+    return { blocks, added, removed, changed: added > 0 || removed > 0, summary: `新增${added}行，移除${removed}行` };
+  };
+  if (a.length * b.length > 2_000_000) {
+    const blocks = []; let i = 0, j = 0;
+    while (i < a.length || j < b.length) {
+      if (i < a.length && j < b.length && a[i] === b[j]) { blocks.push({ type: 'same', text: a[i] }); i++; j++; }
+      else if (i < a.length) { blocks.push({ type: 'remove', text: a[i] }); i++; }
+      else { blocks.push({ type: 'add', text: b[j] }); j++; }
+    }
+    return make(blocks);
+  }
+  const n = a.length, m = b.length, stride = m + 1;
+  const dp = new Int32Array((n + 1) * stride);
+  for (let i = n - 1; i >= 0; i--) {
+    const row = i * stride, next = (i + 1) * stride;
+    for (let j = m - 1; j >= 0; j--) dp[row + j] = a[i] === b[j] ? dp[next + j + 1] + 1 : Math.max(dp[next + j], dp[row + j + 1]);
+  }
+  const blocks = []; let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { blocks.push({ type: 'same', text: a[i] }); i++; j++; }
+    else if (dp[(i + 1) * stride + j] >= dp[i * stride + j + 1]) { blocks.push({ type: 'remove', text: a[i] }); i++; }
+    else { blocks.push({ type: 'add', text: b[j] }); j++; }
+  }
+  while (i < n) { blocks.push({ type: 'remove', text: a[i] }); i++; }
+  while (j < m) { blocks.push({ type: 'add', text: b[j] }); j++; }
+  return make(blocks);
+}
+
 // Durable Session assistant/message data.message.content or data.stream. Never include reasoning/tool data.
 export function extractEventText(event) {
   if (event?.type === 'event') event = event.event;

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createProject, validateProject, saveProject, loadProject, exportBackup, importBackup, buildPrompt, validateScript, compareVersions, extractEventText, STORAGE_KEY } from '../workbench-core.js';
+import { createProject, validateProject, saveProject, loadProject, exportBackup, importBackup, buildPrompt, validateScript, compareVersions, diffLines, extractEventText, STORAGE_KEY } from '../workbench-core.js';
 
 const memory = () => { const data = new Map(); return { getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, value), data }; };
 test('project backups round trip rich state without sharing references', () => {
@@ -88,6 +88,21 @@ test('line summaries handle multiplicity, CRLF and reorder in linear space', () 
   assert.deepEqual(compareVersions('a\r\nb\na', 'a\nb\nc'), { added: 1, removed: 1, changed: true, summary: '新增1行，移除1行（按行计数，重排不计）' });
   assert.equal(compareVersions('a\nb', 'b\na').changed, false);
   assert.equal(compareVersions({ text: 'a' }, { text: 'b' }).added, 1);
+});
+test('positional diff produces ordered add/remove blocks', () => {
+  const result = diffLines('第一行\n保留\n待删除', '第一行\n保留\n新加入');
+  assert.deepEqual(result.blocks.map(x => x.type), ['same', 'same', 'remove', 'add']);
+  assert.equal(result.added, 1);
+  assert.equal(result.removed, 1);
+  assert.match(result.summary, /新增1行，移除1行/);
+  assert.deepEqual(diffLines('a\nb', 'a\nb').blocks.map(x => x.type), ['same', 'same']);
+});
+test('large diff falls back to cheap walk without wrong line counts', () => {
+  const big = Array.from({ length: 2000 }, (_, i) => '行' + i).join('\n');
+  const result = diffLines(big, big + '\n新行');
+  assert.equal(result.changed, true);
+  assert.equal(result.added, 1);
+  assert.equal(result.removed, 0);
 });
 test('event extraction prefers durable content and filters reasoning and tool fragments', () => {
   const event = { type: 'assistant/message', data: { message: { role: 'assistant', content: [{ type: 'reasoning', text: 'SECRET' }, { type: 'text', text: '正文' }] }, stream: [{ type: 'text-chunks', texts: ['重复'] }] } };

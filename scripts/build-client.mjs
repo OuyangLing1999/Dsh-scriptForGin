@@ -9,7 +9,7 @@ await writeFile(corePath, update);
 const strip = (source) => source.replace(/^export /gm, '');
 const wb = strip(await readFile(new URL('workbench-core.js', root), 'utf8'));
 const io = strip(await readFile(new URL('io-core.js', root), 'utf8'));
-const wbExports = ['createProject','validateProject','exportBackup','importBackup','buildPrompt','validateScript','compareVersions','saveCatalog'];
+const wbExports = ['createProject','validateProject','exportBackup','importBackup','buildPrompt','validateScript','compareVersions','diffLines','saveCatalog'];
 const shortRoot = new URL('skills/duanshipin-jiaoben/', root);
 const refs = await readdir(new URL('references/', shortRoot));
 const shortRules = [await readFile(new URL('SKILL.md', shortRoot), 'utf8')];

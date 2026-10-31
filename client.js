@@ -237,6 +237,42 @@ function compareVersions(before, after) {
   return { added, removed, changed: added > 0 || removed > 0, summary: `新增${added}行，移除${removed}行（按行计数，重排不计）` };
 }
 
+// Positional line diff for highlighted version comparison. Falls back to a cheap
+// two-pointer walk when the input is too large for the full LCS table.
+function diffLines(before, after) {
+  const asLines = value => str(typeof value === 'object' && value ? value.text : value).replace(/\r\n?/g, '\n').split('\n');
+  const a = asLines(before), b = asLines(after);
+  const make = (blocks) => {
+    let added = 0, removed = 0;
+    for (const block of blocks) { if (block.type === 'add') added++; if (block.type === 'remove') removed++; }
+    return { blocks, added, removed, changed: added > 0 || removed > 0, summary: `新增${added}行，移除${removed}行` };
+  };
+  if (a.length * b.length > 2_000_000) {
+    const blocks = []; let i = 0, j = 0;
+    while (i < a.length || j < b.length) {
+      if (i < a.length && j < b.length && a[i] === b[j]) { blocks.push({ type: 'same', text: a[i] }); i++; j++; }
+      else if (i < a.length) { blocks.push({ type: 'remove', text: a[i] }); i++; }
+      else { blocks.push({ type: 'add', text: b[j] }); j++; }
+    }
+    return make(blocks);
+  }
+  const n = a.length, m = b.length, stride = m + 1;
+  const dp = new Int32Array((n + 1) * stride);
+  for (let i = n - 1; i >= 0; i--) {
+    const row = i * stride, next = (i + 1) * stride;
+    for (let j = m - 1; j >= 0; j--) dp[row + j] = a[i] === b[j] ? dp[next + j + 1] + 1 : Math.max(dp[next + j], dp[row + j + 1]);
+  }
+  const blocks = []; let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { blocks.push({ type: 'same', text: a[i] }); i++; j++; }
+    else if (dp[(i + 1) * stride + j] >= dp[i * stride + j + 1]) { blocks.push({ type: 'remove', text: a[i] }); i++; }
+    else { blocks.push({ type: 'add', text: b[j] }); j++; }
+  }
+  while (i < n) { blocks.push({ type: 'remove', text: a[i] }); i++; }
+  while (j < m) { blocks.push({ type: 'add', text: b[j] }); j++; }
+  return make(blocks);
+}
+
 // Durable Session assistant/message data.message.content or data.stream. Never include reasoning/tool data.
 function extractEventText(event) {
   if (event?.type === 'event') event = event.event;
@@ -264,7 +300,7 @@ function extractEventText(event) {
   return parts.join('');
 }
 
-return {createProject,validateProject,exportBackup,importBackup,buildPrompt,validateScript,compareVersions,saveCatalog};
+return {createProject,validateProject,exportBackup,importBackup,buildPrompt,validateScript,compareVersions,diffLines,saveCatalog};
 })();
     const IO = (() => {
 const utf8 = new TextEncoder();
@@ -363,7 +399,7 @@ async function readDocxText(input, inflate) {
 
 return {buildDocxBytes,readDocxText};
 })();
-    const CURRENT_VERSION = '2.1.0';
+    const CURRENT_VERSION = '2.2.0';
 const REPOSITORY = 'OuyangLing1999/Dsh-scriptForGin';
 
 function compareVersions(left, right) {
@@ -447,6 +483,23 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
     const input = { width: '100%', boxSizing: 'border-box', padding: '9px 11px', margin: '5px 0 12px', borderRadius: 8, border: '1px solid ' + T.border, background: T.layer2, color: T.text, font: 'inherit' };
     const row = { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 9 };
     const uid = () => globalThis.crypto?.randomUUID?.() || Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+    function parseCharacterDraft(text) {
+      const candidates = [];
+      for (const match of String(text || '').matchAll(/```(?:json)?\s*([\s\S]*?)```/g)) candidates.push(match[1]);
+      candidates.push(String(text || '').trim());
+      for (const raw of candidates) {
+        try {
+          const value = JSON.parse(raw);
+          const list = Array.isArray(value) ? value : value?.characters;
+          if (Array.isArray(list)) {
+            const cards = list.filter((item) => item && typeof item === 'object' && typeof item.name === 'string')
+              .map((item) => ({ name: item.name || '', relationship: item.relationship || '', goal: item.goal || '', knowledge: item.knowledge || '', voice: item.voice || '', state: item.state || '' }));
+            if (cards.length) return cards;
+          }
+        } catch {}
+      }
+      return null;
+    }
     const catalogKey = 'dsh-script.projects.v2';
     const modeLabels = { live: '直播创作', 'live-opt': '直播优化', 'duan-ba': '视频扒片', 'duan-adapt': '短视频改编' };
     function blankProject(title = '新剧本项目') {
@@ -508,6 +561,9 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
       const [selectedVersion, setSelectedVersion] = useState('');
       const [compareId, setCompareId] = useState('');
       const [revision, setRevision] = useState('');
+      const [reviseSegment, setReviseSegment] = useState('');
+      const [sampleTagFilter, setSampleTagFilter] = useState('');
+      const [characterPick, setCharacterPick] = useState({});
       const [update, setUpdate] = useState(null);
       const [updateError, setUpdateError] = useState('');
       const [checking, setChecking] = useState(false);
@@ -551,7 +607,7 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
         return stop;
       }, [ctx]);
       useEffect(() => {
-        setFiles([]); setSelectedVersion(''); setCompareId(''); setLive(null); setConfirmed(false); setEditing(false);
+        setFiles([]); setSelectedVersion(''); setCompareId(''); setLive(null); setConfirmed(false); setEditing(false); setReviseSegment(''); setSampleTagFilter(''); setCharacterPick({});
       }, [project.id]);
       useEffect(() => { setEditing(false); }, [selectedVersion]);
       useEffect(() => {
@@ -654,7 +710,15 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
         const version = { id: uid(), text: live.text, phase, createdAt: new Date().toISOString(), taskId: live.taskId, mode: taskMode };
         const versions = [...p.versions, version];
         change({ versions, pending: null }, p.id); setSelectedVersion(version.id);
-        if (phase === 'outline' || phase === 'audit') { setNotice(phase === 'outline' ? '大纲已生成，确认后可继续生成正文。' : 'AI 审稿已完成，请核对审稿意见。'); return; }
+        if (phase === 'outline') { setNotice('大纲已生成，确认后可继续生成正文。'); return; }
+        if (phase === 'audit') {
+          if ((p.pending.instruction || '').includes('[DSH_EXTRACT_CHARACTERS]')) {
+            const draft = parseCharacterDraft(live.text);
+            change({ characterDraft: draft || null }, p.id);
+            setNotice(draft ? '已生成 ' + draft.length + ' 张人物卡草稿，请在「人物与样稿」中勾选合并。' : '人物卡草稿未能解析出 JSON，请复制正文后手动填写人物卡。');
+          } else setNotice('AI 审稿已完成，请核对审稿意见。');
+          return;
+        }
         const issues = WB.validateScript(live.text, taskMode).issues;
         if (p.autoRepair && p.pending.repairCount < 1 && issues.length) {
           setNotice('发现 ' + issues.length + ' 项格式或连续性问题，等待定向返修一次…');
@@ -759,7 +823,23 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
         );
       }
       function libraryView() {
+        const allTags = [...new Set(project.samples.flatMap((sample) => sample.tags || []))];
+        const visibleSamples = sampleTagFilter ? project.samples.filter((sample) => (sample.tags || []).includes(sampleTagFilter)) : project.samples;
         return h('div', null,
+          project.characterDraft?.length ? h('div', { style: { ...card, borderColor: T.brand } }, h('strong', null, '待确认人物卡草稿'),
+            h('p', { style: { color: T.muted, fontSize: 13 } }, '由 AI 从成稿提取，请勾选要合并的人物，确认后写入人物卡。'),
+            ...project.characterDraft.map((draft, index) => h('label', { key: index, style: { display: 'block', margin: '4px 0' } },
+              h('input', { type: 'checkbox', checked: !!characterPick[index], onChange: (e) => setCharacterPick({ ...characterPick, [index]: e.target.checked }) }),
+              ' ' + (draft.name || '未命名') + (draft.relationship ? '（' + draft.relationship + '）' : ''))),
+            h('div', { style: { ...row, marginTop: 10 } },
+              h(Button, { primary: true, onClick: () => {
+                const selected = project.characterDraft.filter((_, index) => characterPick[index]).map((card) => ({ id: uid(), ...card }));
+                if (!selected.length) { setNotice('请先勾选要合并的人物。'); return; }
+                change({ characters: [...project.characters, ...selected], characterDraft: null });
+                setCharacterPick({}); setNotice('已合并 ' + selected.length + ' 张人物卡。');
+              } }, '合并所选人物'),
+              h(Button, { onClick: () => { change({ characterDraft: null }); setCharacterPick({}); } }, '丢弃草稿')),
+          ) : null,
           h('div', { style: card }, h('h2', { style: { fontSize: 17 } }, '人物卡'),
             h('p', { style: { color: T.muted, fontSize: 13 } }, '由你确认的人物资料会随项目复用；不自动把 AI 临时补出的设定记为事实。'),
             ...project.characters.map((person) => h('details', { key: person.id, style: { ...card, background: T.layer2 }, open: true }, h('summary', null, person.name || '新人物'),
@@ -769,21 +849,35 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
           ),
           h('div', { style: card }, h('h2', { style: { fontSize: 17 } }, '优秀样稿库'),
             h('p', { style: { color: T.muted, fontSize: 13 } }, '只勾选最相关的少量样稿。记录优点和反例，借鉴结构口吻，不照搬样稿事实。'),
-            ...project.samples.map((sample) => h('details', { key: sample.id, style: card }, h('summary', null, sample.title || '新样稿'),
+            allTags.length ? h('label', { style: { display: 'block', marginBottom: 10 } }, '按标签筛选 ',
+              h('select', { value: sampleTagFilter, style: { ...input, width: 'auto', minWidth: 160, marginBottom: 0 }, onChange: (e) => setSampleTagFilter(e.target.value) },
+                h('option', { value: '' }, '全部'), ...allTags.map((tag) => h('option', { key: tag, value: tag }, tag)))) : null,
+            ...visibleSamples.map((sample) => h('details', { key: sample.id, style: card }, h('summary', null, sample.title || '新样稿'),
               h('label', null, h('input', { type: 'checkbox', checked: project.selectedSampleIds.includes(sample.id), onChange: (e) => change({ selectedSampleIds: e.target.checked ? [...project.selectedSampleIds, sample.id] : project.selectedSampleIds.filter((id) => id !== sample.id) }) }), ' 用于当前创作'),
               h(Field, { label: '样稿名称', value: sample.title || '', onChange: (title) => updateItem('samples', sample.id, { title }) }),
               h('select', { value: sample.mode || 'live', style: input, onChange: (e) => updateItem('samples', sample.id, { mode: e.target.value }) }, ...Object.entries(modeLabels).map(([key, label]) => h('option', { key, value: key }, label))),
+              h(Field, { label: '标签（用顿号或逗号分隔）', value: (sample.tags || []).join('、'), onChange: (text) => updateItem('samples', sample.id, { tags: text.split(/[、,，;；\s]+/).map((tag) => tag.trim()).filter(Boolean) }) }),
               h(Field, { label: '样稿正文', value: sample.text, rows: 8, onChange: (text) => updateItem('samples', sample.id, { text }) }),
               h(Field, { label: '优点 / 不要模仿的表达', value: sample.notes || '', rows: 3, onChange: (notes) => updateItem('samples', sample.id, { notes }) }),
               h(Button, { onClick: () => change({ samples: project.samples.filter((item) => item.id !== sample.id), selectedSampleIds: project.selectedSampleIds.filter((id) => id !== sample.id) }) }, '移除此样稿'))),
-            h(Button, { onClick: () => change({ samples: [...project.samples, { id: uid(), title: '', mode: project.mode, text: '', notes: '' }] }) }, '添加样稿'),
-            output ? h(Button, { onClick: () => { change({ samples: [...project.samples, { id: uid(), title: project.title + ' 已确认成稿', mode: project.mode, text: output, notes: '' }] }); setNotice('已加入样稿库，请标注优点并勾选后使用。'); } }, '将当前成稿收入样稿库') : null,
+            h(Button, { onClick: () => change({ samples: [...project.samples, { id: uid(), title: '', mode: project.mode, text: '', notes: '', tags: [] }] }) }, '添加样稿'),
+            output ? h(Button, { onClick: () => { change({ samples: [...project.samples, { id: uid(), title: project.title + ' 已确认成稿', mode: project.mode, text: output, notes: '', tags: [] }] }); setNotice('已加入样稿库，请标注优点并勾选后使用。'); } }, '将当前成稿收入样稿库') : null,
           ),
         );
       }
       function resultView() {
         const before = project.versions.find((v) => v.id === compareId);
         const diff = before && output ? WB.compareVersions(before.text, output) : null;
+        const diffBlocks = before && output ? WB.diffLines(before.text, output).blocks : [];
+        const segmentOptions = [];
+        if (chosen && output) {
+          const mode = chosen.mode || project.mode;
+          if (mode.startsWith('live')) {
+            [...output.matchAll(/^【([^】\n]+)】\s*$/gm)].forEach((match, index) => segmentOptions.push({ value: '段' + (index + 1), label: '第' + (index + 1) + '段 · ' + match[1] }));
+          } else {
+            [...output.matchAll(/【\s*(?:第)?[一二三四五六七八九十\d]+\s*场[^\n】]*】/g)].forEach((match, index) => segmentOptions.push({ value: '场' + (index + 1), label: '场次 ' + (index + 1) + ' · ' + match[0].slice(0, 22) }));
+          }
+        }
         const activeText = project.pending && live?.taskId === project.pending.taskId ? live.text : '';
         return h('div', null,
           h('div', { style: card }, h('h2', { style: { fontSize: 17 } }, '生成结果与版本'),
@@ -804,6 +898,7 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
               h(Button, { onClick: async () => { try { await navigator.clipboard.writeText(output); setNotice('全文已复制'); } catch { setNotice('复制失败，请选中正文复制。'); } } }, '复制全文'),
               ...['md','txt','docx'].map((ext) => h(Button, { key: ext, onClick: () => download(project.title + '.' + ext, ext === 'docx' ? IO.buildDocxBytes(output) : output, ext === 'docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'text/plain;charset=utf-8') }, '下载 ' + ext.toUpperCase())),
               h(Button, { onClick: () => { change({ draft: output }); setTab('create'); setNotice('当前版本已作为创作原稿，历史版本保留。'); } }, '作为下一版原稿'),
+              h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask('audit', '[DSH_EXTRACT_CHARACTERS] 从当前成稿中提取人物卡草稿。只输出一个 ```json 代码块，内容是 {"characters":[{name,relationship,goal,knowledge,voice,state}]}，不要输出其他文字。') }, '提取人物卡草稿'),
               chosen.phase === 'outline' ? h(Button, { primary: true, onClick: () => { change({ outline: output }); setTab('create'); setNotice('大纲已确认保存，回到创作区生成全文。'); } }, '确认此大纲') : null,
             ) : null,
             !output && project.draft ? h(Button, { onClick: () => change({ versions: [...project.versions, { id: uid(), text: project.draft, phase: 'manual', mode: project.mode, createdAt: new Date().toISOString() }] }) }, '将导入原稿放入结果区') : null,
@@ -816,6 +911,10 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
             ),
             h(Field, { label: '修改要求（只改指定部分）', value: revision, rows: 3, onChange: setRevision }),
             h('div', { style: row }, ...['对白更自然','压缩时长但保留核心因果','加强话轮交接','只改结尾','保留正确部分，修复程序发现的问题'].map((text) => h(Button, { key: text, disabled: busy || !!project.pending, onClick: () => submitTask('revision', text + '\n' + (text.includes('程序') ? check.issues.map((issue) => issue.message).join('\n') : '')) }, text))),
+            segmentOptions.length ? h('div', { style: { ...row, marginTop: 10 } },
+              h('label', null, '只返修范围 ', h('select', { value: reviseSegment, style: { ...input, width: 'auto', minWidth: 180, marginBottom: 0 }, onChange: (e) => setReviseSegment(e.target.value) },
+                h('option', { value: '' }, '全文（不限定）'), ...segmentOptions.map((item) => h('option', { key: item.value, value: item.value }, item.label)))),
+              h(Button, { disabled: busy || !!project.pending || !reviseSegment, onClick: () => submitTask('revision', '只返修' + (reviseSegment.startsWith('段') ? '第' + reviseSegment.slice(1) + '段话轮' : '第' + reviseSegment.slice(1) + '场') + '，其余部分保持原样。' + (revision ? '\n本次要求：' + revision : '')) }, '只返修所选部分')) : null,
             h('div', { style: { ...row, marginTop: 10 } }, h(Button, { primary: true, disabled: busy || !!project.pending, onClick: () => submitTask('revision', revision) }, '按要求返修'), h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask('audit', '检查角色动机、因果、对白、情绪兑现和证据边界；指出具体位置和依据。') }, 'AI 审稿')),
             h('div', { style: { marginTop: 16 } },
               editing ? h('div', null,
@@ -829,9 +928,17 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
           ) : null,
           project.versions.length > 1 ? h('div', { style: card }, h('h3', null, '版本对照'),
             h('select', { style: input, value: compareId, onChange: (e) => setCompareId(e.target.value) }, h('option', { value: '' }, '选择要比较的旧版本'), ...project.versions.filter((v) => v.id !== chosen?.id).map((v, i) => h('option', { key: v.id, value: v.id }, '版本 ' + (project.versions.indexOf(v) + 1) + ' · ' + v.phase))),
-            diff ? h('div', null, h('p', null, typeof diff.summary === 'string' ? diff.summary : JSON.stringify(diff.summary)), h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 12 } },
-              h('pre', { style: { whiteSpace: 'pre-wrap', maxHeight: 450, overflow: 'auto', fontFamily: 'inherit' } }, before.text),
-              h('pre', { style: { whiteSpace: 'pre-wrap', maxHeight: 450, overflow: 'auto', fontFamily: 'inherit' } }, output))) : null,
+            diff ? h('div', null,
+              h('p', null, typeof diff.summary === 'string' ? diff.summary : JSON.stringify(diff.summary)),
+              h('pre', { style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 450, overflow: 'auto', fontFamily: 'inherit', fontSize: 13, lineHeight: 1.7, padding: 12, background: T.layer2, borderRadius: 8 } },
+                diffBlocks.map((block, index) => {
+                  const style = block.type === 'add' ? { color: 'var(--dsw-alias-state-success-primary)', background: 'color-mix(in srgb, var(--dsw-alias-state-success-primary) 12%, transparent)' }
+                    : block.type === 'remove' ? { color: 'var(--dsw-alias-state-error-primary)', background: 'color-mix(in srgb, var(--dsw-alias-state-error-primary) 12%, transparent)', textDecoration: 'line-through' }
+                    : {};
+                  return h('div', { key: index, style: { whiteSpace: 'pre-wrap', ...style } }, (block.type === 'add' ? '+ ' : block.type === 'remove' ? '- ' : '  ') + block.text);
+                }),
+              ),
+            ) : null,
           ) : null,
         );
       }
