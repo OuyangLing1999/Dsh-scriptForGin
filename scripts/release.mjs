@@ -14,7 +14,7 @@ const windowsGh = path.join(process.env.LOCALAPPDATA || '', 'Microsoft/WinGet/Pa
 const gh = process.env.GH_BIN || (existsSync(windowsGh) ? windowsGh : 'gh');
 run(process.execPath, ['scripts/build-client.mjs']);
 run(process.execPath, ['--check', 'client.js']);
-run(process.execPath, ['--test', 'tests/update-core.test.mjs']);
+run(process.execPath, ['--test']);
 if (process.argv.includes('--check')) {
   console.log('Release preflight passed for ' + tag + '; no commit or push performed.');
   process.exit(0);

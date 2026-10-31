@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = '1.3.0';
+export const CURRENT_VERSION = '2.0.0';
 export const REPOSITORY = 'OuyangLing1999/Dsh-scriptForGin';
 
 export function compareVersions(left, right) {

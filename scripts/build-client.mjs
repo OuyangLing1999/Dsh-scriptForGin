@@ -1,18 +1,28 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { build } from 'esbuild';
+import { readFile, writeFile, readdir } from 'node:fs/promises';
 const root = new URL('../', import.meta.url);
 const manifest = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
 const corePath = new URL('update-core.js', root);
-let core = await readFile(corePath, 'utf8');
-core = core.replace(/export const CURRENT_VERSION = '[^']+';/, `export const CURRENT_VERSION = '${manifest.version}';`);
-await writeFile(corePath, core);
-const code = core.replace(/^export /gm, '');
-const clientPath = new URL('client.js', root);
-let client = await readFile(clientPath, 'utf8');
-const block = '// UPDATE_CORE_START\n' + code + '\n// UPDATE_CORE_END';
-if (client.includes('// UPDATE_CORE_START')) {
-  client = client.replace(/\/\/ UPDATE_CORE_START[\s\S]*?\/\/ UPDATE_CORE_END/, () => block);
-} else {
-  client = client.replace('    const T = {', () => block + '\n    const T = {');
-}
-await writeFile(clientPath, client);
-console.log('Bundled update checker v' + manifest.version);
+let update = await readFile(corePath, 'utf8');
+update = update.replace(/export const CURRENT_VERSION = '[^']+';/, `export const CURRENT_VERSION = '${manifest.version}';`);
+await writeFile(corePath, update);
+const strip = (source) => source.replace(/^export /gm, '');
+const wb = strip(await readFile(new URL('workbench-core.js', root), 'utf8'));
+const io = strip(await readFile(new URL('io-core.js', root), 'utf8'));
+const wbExports = ['createProject','validateProject','exportBackup','importBackup','buildPrompt','validateScript','compareVersions','saveCatalog'];
+const shortRoot = new URL('skills/duanshipin-jiaoben/', root);
+const refs = await readdir(new URL('references/', shortRoot));
+const shortRules = [await readFile(new URL('SKILL.md', shortRoot), 'utf8')];
+for (const file of refs.filter((name) => name.endsWith('.md')).sort()) shortRules.push(await readFile(new URL('references/' + file, shortRoot), 'utf8'));
+shortRules.push(await readFile(new URL('assets/shooting-script-template.md', shortRoot), 'utf8'));
+const liveRules = await readFile(new URL('skills/elderly-livestream-script/SKILL.md', root), 'utf8');
+let client = await readFile(new URL('client-ui.js', root), 'utf8');
+client = client.replace('/* WORKBENCH_CORE */', () => 'const WB = (() => {\n' + wb + '\nreturn {' + wbExports.join(',') + '};\n})();');
+client = client.replace('/* IO_CORE */', () => 'const IO = (() => {\n' + io + '\nreturn {buildDocxBytes,readDocxText};\n})();');
+client = client.replace('/* UPDATE_CORE */', () => strip(update));
+client = client.replace('/* SCRIPT_RULES */', () => 'const SHORT_VIDEO_RULES = ' + JSON.stringify(shortRules.join('\n\n')) + ';\nconst LIVE_RULES = ' + JSON.stringify(liveRules) + ';');
+await writeFile(new URL('client.js', root), client);
+await build({ entryPoints: [new URL('host-source.js', root).pathname.replace(/^\/([A-Za-z]:)/, '$1')], outfile: new URL('index.js', root).pathname.replace(/^\/([A-Za-z]:)/, '$1'), bundle: true, platform: 'node', format: 'esm', minify: true, legalComments: 'eof' });
+const built = await readFile(new URL('index.js', root), 'utf8');
+await writeFile(new URL('index.js', root), built.replace(/[ \t]+$/gm, ''));
+console.log('Built complete workbench v' + manifest.version);
