@@ -363,7 +363,7 @@ async function readDocxText(input, inflate) {
 
 return {buildDocxBytes,readDocxText};
 })();
-    const CURRENT_VERSION = '2.0.1';
+    const CURRENT_VERSION = '2.1.0';
 const REPOSITORY = 'OuyangLing1999/Dsh-scriptForGin';
 
 function compareVersions(left, right) {
@@ -451,7 +451,7 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
     const modeLabels = { live: '直播创作', 'live-opt': '直播优化', 'duan-ba': '视频扒片', 'duan-adapt': '短视频改编' };
     function blankProject(title = '新剧本项目') {
       return WB.createProject({ id: uid(), title, topic: '', notes: '', videoPath: '', sessionId: '', autoRepair: true,
-        videoEvidence: '', fingerprint: '', outline: '', pending: null, mode: 'live', draft: '' });
+        videoEvidence: '', fingerprint: '', outline: '', pending: null, retry: null, mode: 'live', draft: '' });
     }
     function hydrateProject(value) {
       const p = { ...blankProject(), ...value };
@@ -513,6 +513,8 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
       const [checking, setChecking] = useState(false);
       const [dismissed, setDismissed] = useState('');
       const [confirmed, setConfirmed] = useState(false);
+      const [editing, setEditing] = useState(false);
+      const [elapsed, setElapsed] = useState(0);
       const project = store.projects.find((p) => p.id === store.activeId) || store.projects[0];
       const projectRef = useRef(project); projectRef.current = project;
       const storeRef = useRef(store); storeRef.current = store;
@@ -549,8 +551,15 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
         return stop;
       }, [ctx]);
       useEffect(() => {
-        setFiles([]); setSelectedVersion(''); setCompareId(''); setLive(null); setConfirmed(false);
+        setFiles([]); setSelectedVersion(''); setCompareId(''); setLive(null); setConfirmed(false); setEditing(false);
       }, [project.id]);
+      useEffect(() => { setEditing(false); }, [selectedVersion]);
+      useEffect(() => {
+        if (!project.pending) { setElapsed(0); return; }
+        setElapsed(0);
+        const timer = setInterval(() => setElapsed((value) => value + 1), 1000);
+        return () => clearInterval(timer);
+      }, [project.pending?.taskId]);
       // Host projection is authoritative for task results; no Client event folding.
       useEffect(() => {
         if (!project.sessionId) return;
@@ -617,8 +626,8 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
           ].filter(Boolean).join('\n\n') });
           const rules = p.mode.startsWith('duan') ? SHORT_VIDEO_RULES : LIVE_RULES;
           const text = '[DSH_SCRIPT_TASK:' + taskId + ']\n[DSH_SCRIPT_PHASE:' + phase + ']\n' + rules + '\n\n' + prompt;
-          const pending = { taskId, phase, repairCount, submittedAt: Date.now(), mode: p.mode };
-          change({ sessionId: target, pending }, p.id);
+          const pending = { taskId, phase, repairCount, submittedAt: Date.now(), mode: p.mode, instruction };
+          change({ sessionId: target, pending, retry: null }, p.id);
           const reference = ctx.sessions.retain(target, { source: 'controllerOperation' });
           try {
             const binding = await reference.ready;
@@ -627,7 +636,7 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
           } finally { reference.release(); }
           if (!override && taskFiles.length) setFiles([]);
           setTab('result'); setSelectedVersion(''); setNotice('任务已提交，结果将在本面板显示。');
-        } catch (error) { change({ pending: null }, p.id); setNotice('提交失败：' + error.message); }
+        } catch (error) { change({ pending: null, retry: { phase, instruction, repairCount, reason: error.message } }, p.id); setNotice('提交失败：' + error.message); }
         finally { setBusy(false); }
       }
       useEffect(() => {
@@ -637,7 +646,8 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
         const p = owner;
         completedRef.current.add(live.taskId);
         if (live.error || !live.text.trim()) {
-          change({ pending: null }, p.id); setNotice('任务未生成完整成品：' + (live.error || '结果为空')); return;
+          change({ pending: null, retry: { phase: p.pending.phase, instruction: p.pending.instruction || '', repairCount: p.pending.repairCount, reason: live.error || '结果为空' } }, p.id);
+          setNotice('任务未生成完整成品：' + (live.error || '结果为空')); return;
         }
         const phase = p.pending.phase;
         const taskMode = p.pending.mode || p.mode;
@@ -689,6 +699,19 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
         const p = blankProject();
         setStore((current) => ({ ...current, projects: [...current.projects, p], activeId: p.id })); setTab('create');
       }
+      function deleteProject() {
+        const target = project;
+        if (target.pending || busy) { setNotice('任务运行中，先停止或等待完成再删除。'); return; }
+        if (!globalThis.confirm || confirm('确定删除项目「' + target.title + '」吗？此操作不可恢复，建议先备份。')) {
+          setStore((current) => {
+            let projects = current.projects.filter((item) => item.id !== target.id);
+            if (!projects.length) projects = [blankProject()];
+            const activeId = projects.some((item) => item.id === current.activeId) ? current.activeId : projects[0].id;
+            return { ...current, projects, activeId };
+          });
+          setNotice('项目已删除。');
+        }
+      }
       function updateItem(collection, id, patch) { change({ [collection]: project[collection].map((item) => item.id === id ? { ...item, ...patch } : item) }); }
       async function importBackup(event) {
         try {
@@ -716,7 +739,7 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
             ),
             h(Field, { label: '补充要求 / 活动信息（选填）', value: project.notes, rows: 3, onChange: (notes) => change({ notes }) }),
           ),
-          h('details', { style: card, open: true }, h('summary', { style: { cursor: 'pointer', fontWeight: 600 } }, '创作要点与保护项'),
+          h('details', { style: card }, h('summary', { style: { cursor: 'pointer', fontWeight: 600 } }, '创作要点与保护项（展开填写）'),
             ...[['relationship', '核心人物关系'], ['conflict', '这一次具体争什么'], ['goals', '各方分别想得到什么'], ['ending', '结尾方向'], ['lockedFacts', '必须保留的事实与情节'], ['protectedLines', '必须原样保留的台词']].map(([key, label]) => h(Field, { key, label, value: project.brief[key], rows: key === 'lockedFacts' || key === 'protectedLines' ? 3 : undefined, onChange: (value) => changeBrief(key, value) })),
             h('label', null, '优化力度', h('select', { value: project.intensity, style: input, onChange: (e) => change({ intensity: e.target.value }) },
               h('option', { value: 'light' }, '轻度润色：保留情节和顺序'), h('option', { value: 'structure' }, '结构优化：保留人物事实与结局'), h('option', { value: 'deep' }, '深度重写：允许重构，解释变化'))),
@@ -764,7 +787,11 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
         const activeText = project.pending && live?.taskId === project.pending.taskId ? live.text : '';
         return h('div', null,
           h('div', { style: card }, h('h2', { style: { fontSize: 17 } }, '生成结果与版本'),
-            project.pending ? h('p', { role: 'status' }, '任务运行中：' + project.pending.phase + '。可离开面板，返回后继续接收结果。') : null,
+            project.pending ? h('p', { role: 'status' }, '任务运行中：' + ({full:'全文',outline:'大纲',revision:'修订',audit:'审稿'})[project.pending.phase] + '（已等待 ' + elapsed + ' 秒）。可离开面板，返回后继续接收结果。') : null,
+            project.retry && !project.pending ? h('div', { role: 'status', style: { ...card, background: T.layer2, borderColor: T.error } },
+              h('strong', null, '上次任务未成功'),
+              h('p', null, '原因：' + (project.retry.reason || '未知')),
+              h(Button, { primary: true, disabled: busy, onClick: () => submitTask(project.retry.phase, project.retry.instruction, project.retry.repairCount) }, '重试上次任务')) : null,
             project.pending ? h('div', { style: row }, h(Button, { onClick: () => ctx.uiWorkspace.openSession(project.sessionId) }, '查看生成详情'), h(Button, { onClick: async () => {
               const stoppingId = project.id, stoppingTask = project.pending?.taskId;
               try { await ctx.sessions.using(project.sessionId, { source: 'controllerOperation' }, async (reference) => { const result = await reference.binding.session.cancel(); if (!result.ok) throw result.error; });
@@ -790,10 +817,15 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
             h(Field, { label: '修改要求（只改指定部分）', value: revision, rows: 3, onChange: setRevision }),
             h('div', { style: row }, ...['对白更自然','压缩时长但保留核心因果','加强话轮交接','只改结尾','保留正确部分，修复程序发现的问题'].map((text) => h(Button, { key: text, disabled: busy || !!project.pending, onClick: () => submitTask('revision', text + '\n' + (text.includes('程序') ? check.issues.map((issue) => issue.message).join('\n') : '')) }, text))),
             h('div', { style: { ...row, marginTop: 10 } }, h(Button, { primary: true, disabled: busy || !!project.pending, onClick: () => submitTask('revision', revision) }, '按要求返修'), h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask('audit', '检查角色动机、因果、对白、情绪兑现和证据边界；指出具体位置和依据。') }, 'AI 审稿')),
-            h('details', { style: { marginTop: 16 } }, h('summary', null, '直接编辑当前稿并保存新版本'), h(Field, { label: '可编辑稿', value: project.editBuffers?.[chosen.id] ?? output, rows: 12, onChange: (text) => change({ editBuffers: { ...project.editBuffers, [chosen.id]: text } }) }), h(Button, { onClick: () => {
-              const version = { id: uid(), text: project.editBuffers?.[chosen.id] ?? output, phase: 'manual', mode: chosen.mode || project.mode, createdAt: new Date().toISOString() };
-              change({ versions: [...project.versions, version], editText: null }); setSelectedVersion(version.id);
-            } }, '保存为新版本')),
+            h('div', { style: { marginTop: 16 } },
+              editing ? h('div', null,
+                h(Field, { label: '可编辑稿', value: project.editBuffers?.[chosen.id] ?? output, rows: 12, onChange: (text) => change({ editBuffers: { ...project.editBuffers, [chosen.id]: text } }) }),
+                h('div', { style: row }, h(Button, { primary: true, onClick: () => {
+                  const version = { id: uid(), text: project.editBuffers?.[chosen.id] ?? output, phase: 'manual', mode: chosen.mode || project.mode, createdAt: new Date().toISOString() };
+                  change({ versions: [...project.versions, version] }); setSelectedVersion(version.id); setEditing(false);
+                } }, '保存为新版本'), h(Button, { onClick: () => setEditing(false) }, '取消')),
+              ) : h(Button, { onClick: () => setEditing(true) }, '编辑当前稿'),
+            ),
           ) : null,
           project.versions.length > 1 ? h('div', { style: card }, h('h3', null, '版本对照'),
             h('select', { style: input, value: compareId, onChange: (e) => setCompareId(e.target.value) }, h('option', { value: '' }, '选择要比较的旧版本'), ...project.versions.filter((v) => v.id !== chosen?.id).map((v, i) => h('option', { key: v.id, value: v.id }, '版本 ' + (project.versions.indexOf(v) + 1) + ' · ' + v.phase))),
@@ -811,7 +843,7 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
           h('div', { style: row }, h('a', { href: update.url, target: '_blank', rel: 'noopener noreferrer', style: { color: T.brand } }, '查看并下载更新'), h(Button, { onClick: () => setDismissed(update.latest) }, '稍后再说'))) : null,
         h('div', { style: card }, h('div', { style: row },
           h('label', null, '当前项目 ', h('select', { value: project.id, style: { ...input, width: 'auto', maxWidth: '100%', marginBottom: 0 }, onChange: (e) => setStore((current) => ({ ...current, activeId: e.target.value })) }, ...store.projects.map((p) => h('option', { key: p.id, value: p.id }, p.title)))),
-          h(Button, { onClick: addProject }, '新建项目'), h(Button, { onClick: () => download(project.title + '-项目备份.json', WB.exportBackup(project), 'application/json') }, '备份项目'),
+          h(Button, { onClick: addProject }, '新建项目'), h(Button, { onClick: deleteProject, disabled: !!project.pending || busy }, '删除项目'), h(Button, { onClick: () => download(project.title + '-项目备份.json', WB.exportBackup(project), 'application/json') }, '备份项目'),
           h('label', null, '导入备份 ', h('input', { type: 'file', accept: '.json', onChange: importBackup, style: { maxWidth: 210 } }))),
           h(Field, { label: '项目名称', value: project.title, onChange: (title) => change({ title }) }),
           h('small', { role: 'status', style: { color: T.muted } }, saveStatus || store.error || '正在读取草稿…'),
