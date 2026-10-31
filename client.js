@@ -404,7 +404,7 @@ async function readDocxText(input, inflate) {
 
 return {buildDocxBytes,readDocxText};
 })();
-    const CURRENT_VERSION = '2.6.0';
+    const CURRENT_VERSION = '2.6.1';
 const REPOSITORY = 'OuyangLing1999/Dsh-scriptForGin';
 
 function compareVersions(left, right) {
@@ -692,22 +692,30 @@ const HUMANIZE_PATTERNS = [
         setNotice(update.assetUrl ? '已开始下载更新包：' + (update.assetName || '') + '。解压后可在插件管理中安装。' : '已打开发布页。');
       }
       async function installUpdate() {
-        if (!update?.assetUrl) { setUpdateError('未找到更新包地址，请稍后重试。'); return; }
         if (busy) return;
-        setBusy(true); setUpdateError(''); setNotice('正在把更新交给 DSH 安装…');
+        const pm = ctx.remote && ctx.remote.pluginManager;
+        if (!pm || typeof pm.installBundle !== 'function' || typeof pm.listBundles !== 'function') {
+          setUpdateError('当前环境没有开放插件管理接口，改为下载安装包，请解压后在插件管理中安装。');
+          downloadUpdate();
+          return;
+        }
+        setBusy(true); setUpdateError(''); setNotice('正在通过 DSH 插件管理器更新…');
         try {
-          const sessionId = await ctx.sessions.create({});
-          const text = '请帮我更新 DSH 插件「剧本工具」到 v' + update.latest + '：\n1) 下载更新包 ' + update.assetUrl + ' 到本地临时目录；\n2) 解压该 ZIP；\n3) 调用 plugin_manager(action:"install_bundle", target:"<解压后的目录>") 安装；\n4) 完成后回复安装结果和版本号。不要修改我的项目数据。';
-          const reference = ctx.sessions.retain(sessionId, { source: 'controllerOperation' });
-          try {
-            const binding = await reference.ready;
-            const result = await binding.session.prompt([{ type: 'text', text }], 'queue', undefined, 'update-' + Date.now());
-            if (!result.ok) throw result.error;
-          } finally { reference.release(); }
-          setNotice('已交给 DSH 在后台安装，完成后请刷新页面。');
-          ctx.uiWorkspace.openSession(sessionId);
-        } catch (error) { setUpdateError('更新失败：' + error.message); }
-        finally { setBusy(false); }
+          const list = await pm.listBundles();
+          if (!list.ok) throw list.error;
+          const mine = (list.value || []).find((b) => b.name === '@local/elderly-script');
+          const spec = mine && mine.installTarget && mine.installTarget.spec ? mine.installTarget.spec : (mine && typeof mine.source === 'string' ? mine.source : '');
+          if (!spec) throw new Error('未找到本插件安装来源');
+          const requestId = 'update-' + Date.now();
+          const result = await pm.installBundle(spec, { enabled: true, requestId });
+          if (!result.ok) {
+            const waited = await pm.waitForInstall(requestId).catch(() => ({ ok: false }));
+            if (!waited || !waited.ok || waited.value === null) throw result.error;
+          }
+          setNotice('更新完成，请刷新页面加载新版本。');
+        } catch (error) {
+          setUpdateError('更新失败：' + (error && error.message ? error.message : String(error)) + '。可用「下载安装包」手动安装。');
+        } finally { setBusy(false); }
       }
       const latest = project.versions.at(-1);
       const chosen = project.versions.find((v) => v.id === selectedVersion) || latest;
