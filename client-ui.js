@@ -35,6 +35,8 @@ window.__ModuleLoader__.load({
       return null;
     }
     const catalogKey = 'dsh-script.projects.v2';
+    const fontScaleKey = 'dsh-script.fontScale.v1';
+    const hintKey = 'dsh-script.hint.v1';
     const modeLabels = { live: '直播创作', 'live-opt': '直播优化', 'duan-ba': '视频扒片', 'duan-adapt': '短视频改编' };
     function blankProject(title = '新剧本项目') {
       return WB.createProject({ id: uid(), title, topic: '', notes: '', videoPath: '', sessionId: '', autoRepair: true,
@@ -98,6 +100,10 @@ window.__ModuleLoader__.load({
       const [reviseSegment, setReviseSegment] = useState('');
       const [sampleTagFilter, setSampleTagFilter] = useState('');
       const [characterPick, setCharacterPick] = useState({});
+      const [createStep, setCreateStep] = useState('form');
+      const [fieldErrors, setFieldErrors] = useState({});
+      const [fontScale, setFontScale] = useState(() => { try { return localStorage.getItem(fontScaleKey) || 'normal'; } catch { return 'normal'; } });
+      const [showHint, setShowHint] = useState(() => { try { return localStorage.getItem(hintKey) !== 'seen'; } catch { return true; } });
       const [update, setUpdate] = useState(null);
       const [updateError, setUpdateError] = useState('');
       const [checking, setChecking] = useState(false);
@@ -141,7 +147,7 @@ window.__ModuleLoader__.load({
         return stop;
       }, [ctx]);
       useEffect(() => {
-        setFiles([]); setSelectedVersion(''); setCompareId(''); setLive(null); setConfirmed(false); setEditing(false); setReviseSegment(''); setSampleTagFilter(''); setCharacterPick({});
+        setFiles([]); setSelectedVersion(''); setCompareId(''); setLive(null); setConfirmed(false); setEditing(false); setReviseSegment(''); setSampleTagFilter(''); setCharacterPick({}); setCreateStep('form'); setFieldErrors({});
       }, [project.id]);
       useEffect(() => { setEditing(false); }, [selectedVersion]);
       useEffect(() => {
@@ -321,38 +327,69 @@ window.__ModuleLoader__.load({
         } catch (error) { setNotice('备份导入失败：' + error.message); }
       }
       function creativeForm() {
+        const err = (text) => text ? h('div', { style: { color: T.error, fontSize: 12, margin: '-6px 0 10px' } }, text) : null;
+        const validateStep = () => {
+          const errors = {};
+          if (project.mode === 'live' && !project.topic.trim() && !project.brief.conflict.trim()) errors.topic = '直播创作需要填写主题或本集冲突。';
+          if (['live-opt', 'duan-adapt'].includes(project.mode) && !project.draft.trim() && !files.length) errors.draft = '请粘贴原稿或导入文件。';
+          if (project.mode === 'duan-ba' && !project.videoPath.trim() && !files.length && !project.videoEvidence.trim()) errors.video = '请导入视频、填写本地路径或提供带时间段的证据资料。';
+          return errors;
+        };
+        const nextStep = () => {
+          const errors = validateStep();
+          setFieldErrors(errors);
+          if (Object.keys(errors).length) { setNotice('还有必填项没有完成，请按红色提示补充。'); return; }
+          setNotice(''); setCreateStep('confirm');
+        };
+        const stepStyle = (active) => ({ padding: '6px 12px', borderRadius: 999, background: active ? T.brand : T.layer2, color: T.text, fontWeight: 600, fontSize: 13 });
         return h('div', null,
-          h('div', { style: card },
-            h('h2', { style: { fontSize: 17, marginTop: 0 } }, '创作资料'),
-            h(Field, { label: '主题 / 本集任务', value: project.topic, onChange: (topic) => { change({ topic }); setConfirmed(false); }, placeholder: '谁遇到什么问题，这集要解决什么？' }),
-            h('label', null, '创作模式', h('select', { style: input, value: project.mode, onChange: (e) => { change({ mode: e.target.value }); setConfirmed(false); } }, Object.entries(modeLabels).map(([id, label]) => h('option', { key: id, value: id }, label)))),
-            ['live-opt', 'duan-adapt'].includes(project.mode) ? h(Field, { label: '原稿 / 母版（也可拖入 TXT、Markdown、Word）', value: project.draft, rows: 9, onChange: (draft) => change({ draft }) }) : null,
-            project.mode === 'duan-ba' ? h('div', null,
-              h(Field, { label: '视频本地路径（也可直接选择视频）', value: project.videoPath, onChange: (videoPath) => change({ videoPath }) }),
-              h(Field, { label: '字幕 / 时间轴证据 / 待复核事实', value: project.videoEvidence, rows: 5, onChange: (videoEvidence) => change({ videoEvidence }), placeholder: '标注时间段、画面/音轨依据、不确定的人名金额等；不要把猜测记为已确认。' }),
-            ) : null,
-            h('div', { onDragOver: (e) => e.preventDefault(), onDrop: (e) => { e.preventDefault(); void importFiles(e.dataTransfer.files); }, style: { border: '1px dashed ' + T.border, padding: 14, borderRadius: 8 } },
-              h('label', { style: { display: 'block' } }, '拖入素材或选择文件：', h('input', { type: 'file', multiple: true, accept: '.txt,.md,.docx,.srt,.vtt,.mp4,.mov,.mkv,.webm,.wav,.mp3', onChange: (e) => void importFiles(e.target.files), style: { display: 'block', marginTop: 8, maxWidth: '100%' } })),
-              files.map((file, i) => h('div', { key: i, style: row }, file.name, h(Button, { onClick: () => setFiles((old) => old.filter((_, index) => index !== i)) }, '移除'))),
+          h('div', { style: { ...row, marginBottom: 14 } },
+            h('span', { style: stepStyle(createStep === 'form') }, '第 1 步 · 填资料'),
+            h('span', { style: { color: T.muted } }, '→'),
+            h('span', { style: stepStyle(createStep === 'confirm') }, '第 2 步 · 确认并生成'),
+          ),
+          createStep === 'form' ? h('div', null,
+            h('div', { style: card },
+              h('h2', { style: { fontSize: 17, marginTop: 0 } }, '创作资料'),
+              h(Field, { label: '主题 / 本集任务', value: project.topic, onChange: (topic) => { change({ topic }); setConfirmed(false); setFieldErrors((old) => ({ ...old, topic: '' })); }, placeholder: '谁遇到什么问题，这集要解决什么？' }),
+              err(fieldErrors.topic),
+              h('label', null, '创作模式', h('select', { style: input, value: project.mode, onChange: (e) => { change({ mode: e.target.value }); setConfirmed(false); setFieldErrors({}); } }, Object.entries(modeLabels).map(([id, label]) => h('option', { key: id, value: id }, label)))),
+              ['live-opt', 'duan-adapt'].includes(project.mode) ? h('div', null,
+                h(Field, { label: '原稿 / 母版（也可拖入 TXT、Markdown、Word）', value: project.draft, rows: 9, onChange: (draft) => { change({ draft }); setFieldErrors((old) => ({ ...old, draft: '' })); } }),
+                err(fieldErrors.draft),
+              ) : null,
+              project.mode === 'duan-ba' ? h('div', null,
+                h(Field, { label: '视频本地路径（也可直接选择视频）', value: project.videoPath, onChange: (videoPath) => { change({ videoPath }); setFieldErrors((old) => ({ ...old, video: '' })); } }),
+                h(Field, { label: '字幕 / 时间轴证据 / 待复核事实', value: project.videoEvidence, rows: 5, onChange: (videoEvidence) => { change({ videoEvidence }); setFieldErrors((old) => ({ ...old, video: '' })); }, placeholder: '标注时间段、画面/音轨依据、不确定的人名金额等；不要把猜测记为已确认。' }),
+                err(fieldErrors.video),
+              ) : null,
+              h('div', { onDragOver: (e) => e.preventDefault(), onDrop: (e) => { e.preventDefault(); void importFiles(e.dataTransfer.files); }, style: { border: '1px dashed ' + T.border, padding: 14, borderRadius: 8 } },
+                h('label', { style: { display: 'block' } }, '拖入素材或选择文件：', h('input', { type: 'file', multiple: true, accept: '.txt,.md,.docx,.srt,.vtt,.mp4,.mov,.mkv,.webm,.wav,.mp3', onChange: (e) => void importFiles(e.target.files), style: { display: 'block', marginTop: 8, maxWidth: '100%' } })),
+                files.map((file, i) => h('div', { key: i, style: row }, file.name, h(Button, { onClick: () => setFiles((old) => old.filter((_, index) => index !== i)) }, '移除'))),
+              ),
+              h(Field, { label: '补充要求 / 活动信息（选填）', value: project.notes, rows: 3, onChange: (notes) => change({ notes }) }),
             ),
-            h(Field, { label: '补充要求 / 活动信息（选填）', value: project.notes, rows: 3, onChange: (notes) => change({ notes }) }),
-          ),
-          h('details', { style: card }, h('summary', { style: { cursor: 'pointer', fontWeight: 600 } }, '创作要点与保护项（展开填写）'),
-            ...[['relationship', '核心人物关系'], ['conflict', '这一次具体争什么'], ['goals', '各方分别想得到什么'], ['ending', '结尾方向'], ['lockedFacts', '必须保留的事实与情节'], ['protectedLines', '必须原样保留的台词']].map(([key, label]) => h(Field, { key, label, value: project.brief[key], rows: key === 'lockedFacts' || key === 'protectedLines' ? 3 : undefined, onChange: (value) => changeBrief(key, value) })),
-            h('label', null, '优化力度', h('select', { value: project.intensity, style: input, onChange: (e) => change({ intensity: e.target.value }) },
-              h('option', { value: 'light' }, '轻度润色：保留情节和顺序'), h('option', { value: 'structure' }, '结构优化：保留人物事实与结局'), h('option', { value: 'deep' }, '深度重写：允许重构，解释变化'))),
-            h(Field, { label: '结构指纹（改编项目可保存并复用）', value: project.fingerprint, rows: 4, onChange: (fingerprint) => change({ fingerprint }) }),
-          ),
-          h('div', { style: card }, h('strong', null, '创作确认卡'),
-            h('p', { style: { whiteSpace: 'pre-wrap', lineHeight: 1.7 } }, [project.topic || '主题待补充', '关系：' + (project.brief.relationship || '根据人物卡'), '冲突：' + (project.brief.conflict || project.topic || '待补充'), '结尾：' + (project.brief.ending || '按剧情发展'), '保护项：' + (project.brief.lockedFacts || '无额外锁定')].join('\n')),
-            h('label', null, h('input', { type: 'checkbox', checked: confirmed, onChange: (e) => setConfirmed(e.target.checked) }), ' 我已核对创作要点（也可直接一键生成）'),
-            h('label', { style: { display: 'block', margin: '10px 0' } }, h('input', { type: 'checkbox', checked: project.autoRepair, onChange: (e) => change({ autoRepair: e.target.checked }) }), ' 生成后程序检查，发现问题自动定向返修一次'),
-            h('div', { style: row }, h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask('outline') }, '先生成大纲'), h(Button, { primary: true, disabled: busy || !!project.pending, onClick: () => submitTask('full') }, confirmed ? '按确认卡生成全文' : '一键生成全文')),
-          ),
-          h('details', { style: card }, h('summary', { style: { cursor: 'pointer' } }, '高级选项：关联会话'),
-            h('select', { style: input, value: project.sessionId, onChange: (e) => change({ sessionId: e.target.value }), disabled: !!project.pending },
-              h('option', { value: '' }, '自动为项目新建会话'), ...sessions.map((session) => h('option', { key: session.id, value: session.id }, session.title || session.displayTitle || '未命名会话'))),
-            project.sessionId ? h(Button, { onClick: () => ctx.uiWorkspace.openSession(project.sessionId) }, '打开关联对话') : null,
+            h('details', { style: card }, h('summary', { style: { cursor: 'pointer', fontWeight: 600 } }, '创作要点与保护项（展开填写）'),
+              ...[['relationship', '核心人物关系'], ['conflict', '这一次具体争什么'], ['goals', '各方分别想得到什么'], ['ending', '结尾方向'], ['lockedFacts', '必须保留的事实与情节'], ['protectedLines', '必须原样保留的台词']].map(([key, label]) => h(Field, { key, label, value: project.brief[key], rows: key === 'lockedFacts' || key === 'protectedLines' ? 3 : undefined, onChange: (value) => changeBrief(key, value) })),
+              h('label', null, '优化力度', h('select', { value: project.intensity, style: input, onChange: (e) => change({ intensity: e.target.value }) },
+                h('option', { value: 'light' }, '轻度润色：保留情节和顺序'), h('option', { value: 'structure' }, '结构优化：保留人物事实与结局'), h('option', { value: 'deep' }, '深度重写：允许重构，解释变化'))),
+              h(Field, { label: '结构指纹（改编项目可保存并复用）', value: project.fingerprint, rows: 4, onChange: (fingerprint) => change({ fingerprint }) }),
+            ),
+            h('details', { style: card }, h('summary', { style: { cursor: 'pointer' } }, '高级选项：关联会话'),
+              h('select', { style: input, value: project.sessionId, onChange: (e) => change({ sessionId: e.target.value }), disabled: !!project.pending },
+                h('option', { value: '' }, '自动为项目新建会话'), ...sessions.map((session) => h('option', { key: session.id, value: session.id }, session.title || session.displayTitle || '未命名会话'))),
+              project.sessionId ? h(Button, { onClick: () => ctx.uiWorkspace.openSession(project.sessionId) }, '打开关联对话') : null,
+            ),
+            h('div', { style: row }, h(Button, { primary: true, onClick: nextStep }, '下一步：确认要点')),
+          ) : h('div', null,
+            h('div', { style: card }, h('strong', null, '创作确认卡'),
+              h('p', { style: { whiteSpace: 'pre-wrap', lineHeight: 1.7 } }, [project.topic || '主题待补充', '模式：' + (modeLabels[project.mode] || project.mode), '关系：' + (project.brief.relationship || '根据人物卡'), '冲突：' + (project.brief.conflict || project.topic || '待补充'), '结尾：' + (project.brief.ending || '按剧情发展'), '保护项：' + (project.brief.lockedFacts || '无额外锁定')].join('\n')),
+              h('label', null, h('input', { type: 'checkbox', checked: confirmed, onChange: (e) => setConfirmed(e.target.checked) }), ' 我已核对创作要点（也可直接一键生成）'),
+              h('label', { style: { display: 'block', margin: '10px 0' } }, h('input', { type: 'checkbox', checked: project.autoRepair, onChange: (e) => change({ autoRepair: e.target.checked }) }), ' 生成后程序检查，发现问题自动定向返修一次'),
+              h('div', { style: row }, h(Button, { onClick: () => setCreateStep('form') }, '上一步修改'), h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask('outline') }, '先生成大纲'), h(Button, { primary: true, disabled: busy || !!project.pending, onClick: () => submitTask('full') }, confirmed ? '按确认卡生成全文' : '一键生成全文')),
+            ),
+            h('div', { style: card }, h('strong', null, '接下来'),
+              h('p', { style: { color: T.muted, lineHeight: 1.7 } }, '生成后请到「结果与版本」查看正文、程序检查、定向返修和导出。人物卡与优秀样稿在「人物与样稿」中维护，会随项目一起保存。')),
           ),
         );
       }
@@ -476,17 +513,21 @@ window.__ModuleLoader__.load({
           ) : null,
         );
       }
-      return h('div', { style: { boxSizing: 'border-box', height: '100%', overflowY: 'auto', maxWidth: 1100, margin: '0 auto', padding: '24px 24px 48px', color: T.text, fontSize: 14 } },
+      return h('div', { style: { boxSizing: 'border-box', height: '100%', overflowY: 'auto', maxWidth: 1100, margin: '0 auto', padding: '24px 24px 48px', color: T.text, fontSize: fontScale === 'large' ? 16.5 : 14 } },
         h('h1', { style: { margin: '0 0 8px', fontSize: 24 } }, '剧本工具'),
         h('p', { style: { color: T.muted } }, '项目资料 → 创作确认 → 生成 → 检查返修 → 成稿版本'),
+        showHint ? h('div', { role: 'status', style: { ...card, borderColor: T.brand } }, h('strong', null, '三步完成创作'),
+          h('p', { style: { lineHeight: 1.8 } }, '第 1 步填资料 → 第 2 步确认要点 → 第 3 步到「结果与版本」查看、检查和导出。人物卡与优秀样稿在「人物与样稿」中维护，会随项目自动保存。'),
+          h(Button, { onClick: () => { setShowHint(false); try { localStorage.setItem(hintKey, 'seen'); } catch {} } }, '知道了')) : null,
         update?.available && dismissed !== update.latest ? h('section', { role: 'status', style: { ...card, borderColor: T.brand } }, h('strong', null, '发现新版 v' + update.latest),
           h('details', null, h('summary', null, '更新说明'), h('pre', { style: { whiteSpace: 'pre-wrap' } }, update.notes)),
           h('div', { style: row }, h('a', { href: update.url, target: '_blank', rel: 'noopener noreferrer', style: { color: T.brand } }, '查看并下载更新'), h(Button, { onClick: () => setDismissed(update.latest) }, '稍后再说'))) : null,
         h('div', { style: card }, h('div', { style: row },
-          h('label', null, '当前项目 ', h('select', { value: project.id, style: { ...input, width: 'auto', maxWidth: '100%', marginBottom: 0 }, onChange: (e) => setStore((current) => ({ ...current, activeId: e.target.value })) }, ...store.projects.map((p) => h('option', { key: p.id, value: p.id }, p.title)))),
-          h(Button, { onClick: addProject }, '新建项目'), h(Button, { onClick: deleteProject, disabled: !!project.pending || busy }, '删除项目'), h(Button, { onClick: () => download(project.title + '-项目备份.json', WB.exportBackup(project), 'application/json') }, '备份项目'),
-          h('label', null, '导入备份 ', h('input', { type: 'file', accept: '.json', onChange: importBackup, style: { maxWidth: 210 } }))),
-          h(Field, { label: '项目名称', value: project.title, onChange: (title) => change({ title }) }),
+          h('label', null, '项目 ', h('select', { value: project.id, style: { ...input, width: 'auto', maxWidth: 200, marginBottom: 0 }, onChange: (e) => setStore((current) => ({ ...current, activeId: e.target.value })) }, ...store.projects.map((p) => h('option', { key: p.id, value: p.id }, p.title)))),
+          h('label', null, '名称 ', h('input', { value: project.title, onChange: (e) => change({ title: e.target.value }), style: { ...input, width: 150, marginBottom: 0 } })),
+          h(Button, { onClick: addProject }, '新建'), h(Button, { onClick: deleteProject, disabled: !!project.pending || busy }, '删除'), h(Button, { onClick: () => download(project.title + '-项目备份.json', WB.exportBackup(project), 'application/json') }, '备份'),
+          h('label', null, '导入 ', h('input', { type: 'file', accept: '.json', onChange: importBackup, style: { maxWidth: 160 } })),
+          h(Button, { onClick: () => { const next = fontScale === 'large' ? 'normal' : 'large'; setFontScale(next); try { localStorage.setItem(fontScaleKey, next); } catch {} } }, fontScale === 'large' ? '标准字号' : '大字号'),
           h('small', { role: 'status', style: { color: T.muted } }, saveStatus || store.error || '正在读取草稿…'),
           store.conflict ? h(Button, { onClick: () => {
             const disk = loadCatalog();
@@ -499,7 +540,7 @@ window.__ModuleLoader__.load({
           } }, '保留双方项目并合并副本') : store.blocked ? h(Button, { onClick: () => {
             try { const raw = localStorage.getItem(catalogKey); if (raw) localStorage.setItem(catalogKey + '.corrupt.' + Date.now(), raw); localStorage.removeItem(catalogKey); revisionRef.current = 0; setStore((s) => ({ ...s, blocked: false })); } catch (error) { setNotice(error.message); }
           } }, '备份损坏存档并保存当前项目') : null,
-        ),
+        )),
         notice ? h('div', { role: 'status', style: { ...card, borderColor: T.brand } }, notice) : null,
         h('nav', { 'aria-label': '剧本工作区', style: { ...row, marginBottom: 16 } }, ...[['create','创作'],['library','人物与样稿'],['result','结果与版本']].map(([key,label]) => h(Button, { key, primary: tab === key, onClick: () => setTab(key) }, label))),
         tab === 'result' ? resultView() : h('fieldset', { disabled: busy || !!project.pending || !!repairQueue, style: { border: 0, padding: 0, margin: 0, minWidth: 0 } }, tab === 'create' ? creativeForm() : libraryView()),
