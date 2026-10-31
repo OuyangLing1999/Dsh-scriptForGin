@@ -40,13 +40,14 @@ window.__ModuleLoader__.load({
     const modeLabels = { live: '直播创作', 'live-opt': '直播优化', 'duan-ba': '视频扒片', 'duan-adapt': '短视频改编' };
     function blankProject(title = '新剧本项目') {
       return WB.createProject({ id: uid(), title, topic: '', notes: '', videoPath: '', sessionId: '', autoRepair: true,
-        videoEvidence: '', fingerprint: '', outline: '', pending: null, retry: null, mode: 'live', draft: '' });
+        videoEvidence: '', fingerprint: '', outline: '', pending: null, retry: null, mode: 'live', draft: '', deliverable: 'script' });
     }
     function hydrateProject(value) {
       const p = { ...blankProject(), ...value };
       for (const key of ['topic','notes','videoPath','sessionId','videoEvidence','fingerprint','outline']) if (typeof p[key] !== 'string') p[key] = '';
       p.brief = Object.fromEntries(Object.entries(p.brief).map(([key, entry]) => [key, Array.isArray(entry) ? entry.join('\n') : entry]));
       p.autoRepair = p.autoRepair !== false;
+      if (!['idea', 'outline', 'script'].includes(p.deliverable)) p.deliverable = 'script';
       return p;
     }
     function loadCatalog() {
@@ -250,7 +251,8 @@ window.__ModuleLoader__.load({
         const version = { id: uid(), text: live.text, phase, createdAt: new Date().toISOString(), taskId: live.taskId, mode: taskMode };
         const versions = [...p.versions, version];
         change({ versions, pending: null }, p.id); setSelectedVersion(version.id);
-        if (phase === 'outline') { setNotice('大纲已生成，确认后可继续生成正文。'); return; }
+        if (phase === 'idea') { setNotice('思路已生成；满意的话可在结果区「扩成大纲」或「扩成剧本」。'); return; }
+        if (phase === 'outline') { setNotice('大纲已生成；满意的话可在结果区「扩成剧本」。'); return; }
         if (phase === 'audit') {
           if ((p.pending.instruction || '').includes('[DSH_EXTRACT_CHARACTERS]')) {
             const draft = parseCharacterDraft(live.text);
@@ -342,6 +344,9 @@ window.__ModuleLoader__.load({
           setNotice(''); setCreateStep('confirm');
         };
         const stepStyle = (active) => ({ padding: '6px 12px', borderRadius: 999, background: active ? T.brand : T.layer2, color: active ? 'var(--dsw-alias-bg-base)' : T.text, fontWeight: 600, fontSize: 13 });
+        const deliverable = ['idea', 'outline', 'script'].includes(project.deliverable) ? project.deliverable : 'script';
+        const deliverablePhase = deliverable === 'idea' ? 'idea' : deliverable === 'outline' ? 'outline' : 'full';
+        const deliverableLabel = ({ idea: '思路', outline: '大纲', script: '完整剧本' })[deliverable];
         return h('div', null,
           h('div', { style: { ...row, marginBottom: 14 } },
             h('span', { style: stepStyle(createStep === 'form') }, '第 1 步 · 填资料'),
@@ -354,6 +359,10 @@ window.__ModuleLoader__.load({
               h(Field, { label: '主题 / 本集任务', value: project.topic, onChange: (topic) => { change({ topic }); setConfirmed(false); setFieldErrors((old) => ({ ...old, topic: '' })); }, placeholder: '谁遇到什么问题，这集要解决什么？' }),
               err(fieldErrors.topic),
               h('label', null, '创作模式', h('select', { style: input, value: project.mode, onChange: (e) => { change({ mode: e.target.value }); setConfirmed(false); setFieldErrors({}); } }, Object.entries(modeLabels).map(([id, label]) => h('option', { key: id, value: id }, label)))),
+              h('label', null, '这次要什么', h('select', { style: input, value: project.deliverable || 'script', onChange: (e) => { change({ deliverable: e.target.value }); setConfirmed(false); } },
+                h('option', { value: 'idea' }, '只想要思路（方向建议，不写台词）'),
+                h('option', { value: 'outline' }, '要大纲（结构骨架，不写全文）'),
+                h('option', { value: 'script' }, '要完整剧本（可直接用）'))),
               ['live-opt', 'duan-adapt'].includes(project.mode) ? h('div', null,
                 h(Field, { label: '原稿 / 母版（也可拖入 TXT、Markdown、Word）', value: project.draft, rows: 9, onChange: (draft) => { change({ draft }); setFieldErrors((old) => ({ ...old, draft: '' })); } }),
                 err(fieldErrors.draft),
@@ -383,10 +392,13 @@ window.__ModuleLoader__.load({
             h('div', { style: row }, h(Button, { primary: true, onClick: nextStep }, '下一步：确认要点')),
           ) : h('div', null,
             h('div', { style: card }, h('strong', null, '创作确认卡'),
-              h('p', { style: { whiteSpace: 'pre-wrap', lineHeight: 1.7 } }, [project.topic || '主题待补充', '模式：' + (modeLabels[project.mode] || project.mode), '关系：' + (project.brief.relationship || '根据人物卡'), '冲突：' + (project.brief.conflict || project.topic || '待补充'), '结尾：' + (project.brief.ending || '按剧情发展'), '保护项：' + (project.brief.lockedFacts || '无额外锁定')].join('\n')),
-              h('label', null, h('input', { type: 'checkbox', checked: confirmed, onChange: (e) => setConfirmed(e.target.checked) }), ' 我已核对创作要点（也可直接一键生成）'),
+              h('p', { style: { whiteSpace: 'pre-wrap', lineHeight: 1.7 } }, [project.topic || '主题待补充', '模式：' + (modeLabels[project.mode] || project.mode), '产出：' + deliverableLabel, '关系：' + (project.brief.relationship || '根据人物卡'), '冲突：' + (project.brief.conflict || project.topic || '待补充'), '结尾：' + (project.brief.ending || '按剧情发展'), '保护项：' + (project.brief.lockedFacts || '无额外锁定')].join('\n')),
+              h('label', null, h('input', { type: 'checkbox', checked: confirmed, onChange: (e) => setConfirmed(e.target.checked) }), ' 我已核对创作要点（也可直接生成）'),
               h('label', { style: { display: 'block', margin: '10px 0' } }, h('input', { type: 'checkbox', checked: project.autoRepair, onChange: (e) => change({ autoRepair: e.target.checked }) }), ' 生成后程序检查，发现问题自动定向返修一次'),
-              h('div', { style: row }, h(Button, { onClick: () => setCreateStep('form') }, '上一步修改'), h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask('outline') }, '先生成大纲'), h(Button, { primary: true, disabled: busy || !!project.pending, onClick: () => submitTask('full') }, confirmed ? '按确认卡生成全文' : '一键生成全文')),
+              h('div', { style: row },
+                h(Button, { onClick: () => setCreateStep('form') }, '上一步修改'),
+                deliverable === 'script' ? h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask('outline') }, '先生成大纲') : null,
+                h(Button, { primary: true, disabled: busy || !!project.pending, onClick: () => submitTask(deliverablePhase) }, deliverable === 'idea' ? '生成思路' : deliverable === 'outline' ? '生成大纲' : (confirmed ? '按确认卡生成全文' : '一键生成全文'))),
             ),
             h('div', { style: card }, h('strong', null, '接下来'),
               h('p', { style: { color: T.muted, lineHeight: 1.7 } }, '生成后请到「结果与版本」查看正文、程序检查、定向返修和导出。人物卡与优秀样稿在「人物与样稿」中维护，会随项目一起保存。')),
@@ -450,9 +462,10 @@ window.__ModuleLoader__.load({
           }
         }
         const activeText = project.pending && live?.taskId === project.pending.taskId ? live.text : '';
+        const structureOnly = ['idea', 'outline', 'audit'].includes(chosen?.phase);
         return h('div', null,
           h('div', { style: card }, h('h2', { style: { fontSize: 17 } }, '生成结果与版本'),
-            project.pending ? h('p', { role: 'status' }, '任务运行中：' + ({full:'全文',outline:'大纲',revision:'修订',audit:'审稿'})[project.pending.phase] + '（已等待 ' + elapsed + ' 秒）。可离开面板，返回后继续接收结果。') : null,
+            project.pending ? h('p', { role: 'status' }, '任务运行中：' + ({idea:'思路',full:'全文',outline:'大纲',revision:'修订',audit:'审稿'})[project.pending.phase] + '（已等待 ' + elapsed + ' 秒）。可离开面板，返回后继续接收结果。') : null,
             project.retry && !project.pending ? h('div', { role: 'status', style: { ...card, background: T.layer2, borderColor: T.error } },
               h('strong', null, '上次任务未成功'),
               h('p', null, '原因：' + (project.retry.reason || '未知')),
@@ -463,26 +476,28 @@ window.__ModuleLoader__.load({
                 setStore((current) => ({ ...current, projects: current.projects.map((item) => item.id === stoppingId && item.pending?.taskId === stoppingTask ? { ...item, pending: null } : item) }));
               } catch (error) { setNotice(error.message); }
             } }, '停止生成')) : null,
-            project.versions.length ? h('select', { style: input, value: chosen?.id || '', onChange: (e) => setSelectedVersion(e.target.value) }, ...project.versions.map((v, i) => h('option', { key: v.id, value: v.id }, 'v' + (i + 1) + ' · ' + ({full:'全文',outline:'大纲',revision:'修订',audit:'审稿',manual:'手动编辑'})[v.phase] + ' · ' + new Date(v.createdAt).toLocaleString()))) : null,
+            project.versions.length ? h('select', { style: input, value: chosen?.id || '', onChange: (e) => setSelectedVersion(e.target.value) }, ...project.versions.map((v, i) => h('option', { key: v.id, value: v.id }, 'v' + (i + 1) + ' · ' + ({idea:'思路',full:'全文',outline:'大纲',revision:'修订',audit:'审稿',manual:'手动编辑'})[v.phase] + ' · ' + new Date(v.createdAt).toLocaleString()))) : null,
             h('pre', { style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontFamily: 'inherit', fontSize: 15, lineHeight: 1.9, minHeight: 140, maxHeight: 650, overflow: 'auto', padding: 12, background: T.layer2, borderRadius: 8 } }, activeText || output || '尚无结果。请先创作，或导入原稿后检查。'),
             output ? h('div', { style: row },
               h(Button, { onClick: async () => { try { await navigator.clipboard.writeText(output); setNotice('全文已复制'); } catch { setNotice('复制失败，请选中正文复制。'); } } }, '复制全文'),
               ...['md','txt','docx'].map((ext) => h(Button, { key: ext, onClick: () => download(project.title + '.' + ext, ext === 'docx' ? IO.buildDocxBytes(output) : output, ext === 'docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'text/plain;charset=utf-8') }, '下载 ' + ext.toUpperCase())),
               h(Button, { onClick: () => { change({ draft: output }); setTab('create'); setNotice('当前版本已作为创作原稿，历史版本保留。'); } }, '作为下一版原稿'),
               h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask('audit', '[DSH_EXTRACT_CHARACTERS] 从当前成稿中提取人物卡草稿。只输出一个 ```json 代码块，内容是 {"characters":[{name,relationship,goal,knowledge,voice,state}]}，不要输出其他文字。') }, '提取人物卡草稿'),
+              chosen.phase === 'idea' ? h(Button, { disabled: busy || !!project.pending, onClick: () => { change({ deliverable: 'outline' }); submitTask('outline', '基于当前思路扩展为大纲，保持人物、冲突和结尾方向。', 0, { ...project, draft: output, deliverable: 'outline' }); } }, '扩成大纲') : null,
+              (chosen.phase === 'idea' || chosen.phase === 'outline') ? h(Button, { disabled: busy || !!project.pending, onClick: () => { change({ deliverable: 'script' }); submitTask('full', '基于当前版本扩写为完整剧本，保持已确定的人物、事实和结尾。', 0, { ...project, draft: output, deliverable: 'script' }); } }, '扩成剧本') : null,
               chosen.phase === 'outline' ? h(Button, { primary: true, onClick: () => { change({ outline: output }); setTab('create'); setNotice('大纲已确认保存，回到创作区生成全文。'); } }, '确认此大纲') : null,
             ) : null,
             !output && project.draft ? h(Button, { onClick: () => change({ versions: [...project.versions, { id: uid(), text: project.draft, phase: 'manual', mode: project.mode, createdAt: new Date().toISOString() }] }) }, '将导入原稿放入结果区') : null,
           ),
           output ? h('div', { style: card }, h('h3', null, '检查与定向返修'),
             h('p', { style: { color: T.muted, fontSize: 13 } }, '程序核对格式、字数、时长与部分连续性；AI 审稿评估动机和因果。两者均不替代原始证据核实。'),
-            chosen.phase === 'outline' || chosen.phase === 'audit' ? h('p', null, '当前为大纲或审稿报告，不按完整剧本格式判定。') : h('div', null,
+            structureOnly ? h('p', null, '当前为思路、大纲或审稿报告，不按完整剧本格式判定。') : h('div', null,
               h('strong', null, check.ok ? '程序检查通过' : '发现 ' + check.issues.length + ' 项待检查问题'),
               h('ul', null, ...check.issues.map((issue, i) => h('li', { key: i }, (issue.segment ? '第' + issue.segment + '段：' : '') + issue.message))),
             ),
             h(Field, { label: '修改要求（只改指定部分）', value: revision, rows: 3, onChange: setRevision }),
-            h('div', { style: row }, ...['对白更自然','压缩时长但保留核心因果','加强话轮交接','只改结尾','保留正确部分，修复程序发现的问题'].map((text) => h(Button, { key: text, disabled: busy || !!project.pending, onClick: () => submitTask('revision', text + '\n' + (text.includes('程序') ? check.issues.map((issue) => issue.message).join('\n') : '')) }, text))),
-            segmentOptions.length ? h('div', { style: { ...row, marginTop: 10 } },
+            structureOnly ? null : h('div', { style: row }, ...['对白更自然','压缩时长但保留核心因果','加强话轮交接','只改结尾','保留正确部分，修复程序发现的问题'].map((text) => h(Button, { key: text, disabled: busy || !!project.pending, onClick: () => submitTask('revision', text + '\n' + (text.includes('程序') ? check.issues.map((issue) => issue.message).join('\n') : '')) }, text))),
+            !structureOnly && segmentOptions.length ? h('div', { style: { ...row, marginTop: 10 } },
               h('label', null, '只返修范围 ', h('select', { value: reviseSegment, style: { ...input, width: 'auto', minWidth: 180, marginBottom: 0 }, onChange: (e) => setReviseSegment(e.target.value) },
                 h('option', { value: '' }, '全文（不限定）'), ...segmentOptions.map((item) => h('option', { key: item.value, value: item.value }, item.label)))),
               h(Button, { disabled: busy || !!project.pending || !reviseSegment, onClick: () => submitTask('revision', '只返修' + (reviseSegment.startsWith('段') ? '第' + reviseSegment.slice(1) + '段话轮' : '第' + reviseSegment.slice(1) + '场') + '，其余部分保持原样。' + (revision ? '\n本次要求：' + revision : '')) }, '只返修所选部分')) : null,

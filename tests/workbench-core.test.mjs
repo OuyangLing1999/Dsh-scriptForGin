@@ -84,6 +84,21 @@ test('short checks eight sections, scene fields, budgets, people and route', () 
   for (const code of ['SHORT_ROUTE_JUMP', 'SHORT_UNDECLARED_PERSON', 'SHORT_DURATION_SUM', 'SHORT_SCENE_FIELD']) assert.ok(bad.issues.some(x => x.code === code), code);
   assert.ok(validateScript(shooting().replace('拍摄前必看', 'missing'), 'duan-ba').issues.some(x => x.code === 'SHORT_SECTION'));
 });
+test('idea and outline phases skip full-script protocol while full keeps it', () => {
+  const project = createProject({ topic: '回家' });
+  const idea = buildPrompt({ mode: 'live', phase: 'idea', project });
+  assert.match(idea, /只给创作思路/);
+  assert.doesNotMatch(idea, /至少200个汉字/);
+  const outline = buildPrompt({ mode: 'live', phase: 'outline', project });
+  assert.match(outline, /只给大纲/);
+  assert.doesNotMatch(outline, /至少200个汉字/);
+  assert.match(buildPrompt({ mode: 'live', phase: 'full', project }), /至少200个汉字/);
+});
+test('deliverable value is validated', () => {
+  assert.equal(validateProject(createProject({ deliverable: 'idea' })).ok, true);
+  assert.equal(validateProject(createProject({ deliverable: 'outline' })).ok, true);
+  assert.equal(validateProject(createProject({ deliverable: 'bad' })).ok, false);
+});
 test('line summaries handle multiplicity, CRLF and reorder in linear space', () => {
   assert.deepEqual(compareVersions('a\r\nb\na', 'a\nb\nc'), { added: 1, removed: 1, changed: true, summary: '新增1行，移除1行（按行计数，重排不计）' });
   assert.equal(compareVersions('a\nb', 'b\na').changed, false);

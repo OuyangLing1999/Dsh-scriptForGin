@@ -2,7 +2,7 @@
 export const SCHEMA_VERSION = 1;
 export const STORAGE_KEY = 'elderly-script.workbench.v1';
 export const MODES = ['live', 'live-opt', 'duan-ba', 'duan-adapt'];
-const PHASES = ['outline', 'full', 'revision', 'audit'];
+const PHASES = ['idea', 'outline', 'full', 'revision', 'audit'];
 const INTENSITIES = ['light', 'structure', 'deep'];
 const BRIEF_FIELDS = ['relationship', 'conflict', 'goals', 'ending', 'lockedFacts', 'protectedLines'];
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -12,7 +12,7 @@ const errorText = error => error instanceof Error ? error.message : String(error
 
 export function createProject(overrides = {}) {
   const project = {
-    schemaVersion: SCHEMA_VERSION, title: '', mode: 'live', draft: '',
+    schemaVersion: SCHEMA_VERSION, title: '', mode: 'live', draft: '', deliverable: 'script',
     brief: Object.fromEntries(BRIEF_FIELDS.map(key => [key, ''])),
     intensity: 'light', characters: [], samples: [], selectedSampleIds: [], versions: [],
     ...clone(overrides),
@@ -27,6 +27,7 @@ export function validateProject(value) {
   if (value.schemaVersion !== SCHEMA_VERSION) errors.push('项目版本不受支持');
   for (const key of ['title', 'draft']) if (typeof value[key] !== 'string') errors.push(key + ' 必须是文本');
   if (!MODES.includes(value.mode)) errors.push('mode 无效');
+  if (value.deliverable !== undefined && !['idea', 'outline', 'script'].includes(value.deliverable)) errors.push('deliverable 无效');
   if (!INTENSITIES.includes(value.intensity)) errors.push('intensity 无效');
   if (!plain(value.brief)) errors.push('brief 必须是对象');
   else for (const key of BRIEF_FIELDS) if (typeof value.brief[key] !== 'string' && !(Array.isArray(value.brief[key]) && value.brief[key].every(x => typeof x === 'string'))) errors.push('brief.' + key + ' 必须是文本或文本列表');
@@ -127,13 +128,16 @@ export function buildPrompt(options = {}) {
     '创作简报：\n' + JSON.stringify(Object.fromEntries(BRIEF_FIELDS.map(key => [key, brief[key] || ''])), null, 2),
     '角色卡（称呼、身份/立场、目标、说话风格）：\n' + JSON.stringify(characters, null, 2),
   ];
-  if (live) lines.push('直播协议：只用【角色名】行及纯对白。每段正式角色台词至少200个汉字；观点→生活细节→情感落点→明确交接。每次换人点名、提问、复述或接话；不写动作、神态、括号舞台提示和镜头。线上事件靠台词表达；通俗口语，数字时间金额换大白话复述。');
-  else lines.push('短视频协议：按八段输出：' + SECTIONS.map((name, i) => (i + 1) + '.' + name).join('；') + '。声明登场人物、空间路径、目标总时长。每场列预计时长（秒）和11字段：' + SCENE_FIELDS.join('；') + '。分场秒数之和等于总时长；人物来自声明，位置沿路径停留或逐节点推进，回程必须预先列入路径。',
-    '证据规则：区分明确/合理概括/不确定；关键材料状态仅为 提及→承诺提供→实物在场→当场出示→已经核验，后一级必须有视听证据。缺失视频、母版或关键证据时列待补资料，不虚构原片事实、医学因果、后台数据或连续剧情。');
-  if (mode === 'duan-ba') lines.push('扒片：先按时间整理可见/可听证据表，再记录结构指纹；原片实际时长为基准，估算明确标注。');
-  if (mode === 'duan-adapt') lines.push('改编：先做母版结构项→新故事实现→锁定→冲突/补偿对照；保留钩子、功能位、阻力与证据递进、空间推进、阶段奖励、兑现和结尾债务；默认母版时长±15%，用户指定优先。');
+  const strict = phase === 'full' || phase === 'revision';
+  if (strict) {
+    if (live) lines.push('直播协议：只用【角色名】行及纯对白。每段正式角色台词至少200个汉字；观点→生活细节→情感落点→明确交接。每次换人点名、提问、复述或接话；不写动作、神态、括号舞台提示和镜头。线上事件靠台词表达；通俗口语，数字时间金额换大白话复述。');
+    else lines.push('短视频协议：按八段输出：' + SECTIONS.map((name, i) => (i + 1) + '.' + name).join('；') + '。声明登场人物、空间路径、目标总时长。每场列预计时长（秒）和11字段：' + SCENE_FIELDS.join('；') + '。分场秒数之和等于总时长；人物来自声明，位置沿路径停留或逐节点推进，回程必须预先列入路径。',
+      '证据规则：区分明确/合理概括/不确定；关键材料状态仅为 提及→承诺提供→实物在场→当场出示→已经核验，后一级必须有视听证据。缺失视频、母版或关键证据时列待补资料，不虚构原片事实、医学因果、后台数据或连续剧情。');
+  }
+  if (strict && mode === 'duan-ba') lines.push('扒片：先按时间整理可见/可听证据表，再记录结构指纹；原片实际时长为基准，估算明确标注。');
+  if (strict && mode === 'duan-adapt') lines.push('改编：先做母版结构项→新故事实现→锁定→冲突/补偿对照；保留钩子、功能位、阻力与证据递进、空间推进、阶段奖励、兑现和结尾债务；默认母版时长±15%，用户指定优先。');
   if (mode === 'live-opt' || phase === 'revision') lines.push('优化强度：' + intensity + '。' + ({ light: '仅修口语、赘句和交接，保留顺序与情节。', structure: '允许调整话轮和信息顺序，保留核心关系、因果与结局。', deep: '允许重构节奏和场景，逐项说明变更理由；锁定事实与保护台词仍保持。' })[intensity]);
-  lines.push(({ outline: '本阶段只给大纲、角色目标和待确认问题，不提前生成全文。', full: live ? '本阶段只交付完整纯对白正文；输出前自查字数、交接和事实一致性，检查说明留待独立审稿，不混入正文。' : '本阶段交付完整正文；先按本模式协议自查，再明确尚待人工核实的事项。', revision: live ? '依据当前稿与修改要求只交付修订后的完整纯对白，不附修改清单或检查报告。' : '本阶段依据当前稿与修改要求交付修订正文，并给简短修改清单。', audit: '本阶段只审校，按位置/问题/依据/修复建议列出，不代写全文；区分机器可核对项与人工判断项。' })[phase]);
+  lines.push(({ idea: '只给创作思路与方向，不写完整台词：用分点输出 1.一句话卖点 2.核心冲突（谁和谁、争什么）3.主播/一麦/二麦各自诉求 4.2-3个可用转折或爆点 5.结尾方向与续集钩子 6.3条可延展的系列选题。', outline: '只给大纲：给出结构骨架与分场/分段清单，不写完整台词。直播稿按话轮提纲（谁先开口、谁接话、第几段反转、哪里落泪、怎么收尾，标注功能与情绪走向）；短视频按场次骨架（位置、事件、冲突升级、证据或反转、结尾钩子、预计时长）。', full: live ? '本阶段只交付完整纯对白正文；输出前自查字数、交接和事实一致性，检查说明留待独立审稿，不混入正文。' : '本阶段交付完整正文；先按本模式协议自查，再明确尚待人工核实的事项。', revision: live ? '依据当前稿与修改要求只交付修订后的完整纯对白，不附修改清单或检查报告。' : '本阶段依据当前稿与修改要求交付修订正文，并给简短修改清单。', audit: '本阶段只审校，按位置/问题/依据/修复建议列出，不代写全文；区分机器可核对项与人工判断项。' })[phase]);
   if (samples.length) lines.push('选中且与模式相关的样本（只借鉴结构、口吻，不把样本事实写成用户事实）：\n' + JSON.stringify(samples.map(({ id, title, text, notes }) => ({ id, title, text, notes })), null, 2));
   const draft = options.draft ?? project.draft;
   if (draft) lines.push('当前稿（资料）：\n' + draft);
