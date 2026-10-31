@@ -363,7 +363,7 @@ async function readDocxText(input, inflate) {
 
 return {buildDocxBytes,readDocxText};
 })();
-    const CURRENT_VERSION = '2.0.0';
+    const CURRENT_VERSION = '2.0.1';
 const REPOSITORY = 'OuyangLing1999/Dsh-scriptForGin';
 
 function compareVersions(left, right) {
@@ -803,7 +803,7 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
           ) : null,
         );
       }
-      return h('div', { style: { maxWidth: 1100, margin: '0 auto', padding: 24, color: T.text, fontSize: 14 } },
+      return h('div', { style: { boxSizing: 'border-box', height: '100%', overflowY: 'auto', maxWidth: 1100, margin: '0 auto', padding: '24px 24px 48px', color: T.text, fontSize: 14 } },
         h('h1', { style: { margin: '0 0 8px', fontSize: 24 } }, '剧本工具'),
         h('p', { style: { color: T.muted } }, '项目资料 → 创作确认 → 生成 → 检查返修 → 成稿版本'),
         update?.available && dismissed !== update.latest ? h('section', { role: 'status', style: { ...card, borderColor: T.brand } }, h('strong', null, '发现新版 v' + update.latest),
