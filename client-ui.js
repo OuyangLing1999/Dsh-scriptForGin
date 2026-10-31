@@ -8,6 +8,7 @@ window.__ModuleLoader__.load({
     /* IO_CORE */
     /* UPDATE_CORE */
     /* SCRIPT_RULES */
+    /* HUMANIZE_RULES */
     const T = {
       bg: 'var(--dsw-alias-bg-base)', layer1: 'var(--dsw-alias-bg-layer-1)', layer2: 'var(--dsw-alias-bg-layer-2)',
       border: 'var(--dsw-alias-border-l2)', brand: 'var(--dsw-alias-brand-primary)',
@@ -219,9 +220,9 @@ window.__ModuleLoader__.load({
         if (busy) return;
         const p = override || projectRef.current;
         if (p.pending && !override) { setNotice('项目已有任务运行，完成后再提交。'); return; }
-        if (!['revision', 'audit', 'persona'].includes(phase) && p.mode === 'live' && !p.topic.trim() && !p.brief.conflict.trim()) { setNotice('请填写主题或本集冲突。'); return; }
-        if (!['revision', 'audit', 'persona'].includes(phase) && ['live-opt', 'duan-adapt'].includes(p.mode) && !p.draft.trim() && !files.length) { setNotice('请粘贴原稿或导入文件。'); return; }
-        if (!['revision', 'audit', 'persona'].includes(phase) && p.mode === 'duan-ba' && !p.videoPath.trim() && !files.length && !p.videoEvidence.trim()) { setNotice('请导入视频、填写本地路径或提供带时间段的证据资料。'); return; }
+        if (!['revision', 'audit', 'persona', 'polish'].includes(phase) && p.mode === 'live' && !p.topic.trim() && !p.brief.conflict.trim()) { setNotice('请填写主题或本集冲突。'); return; }
+        if (!['revision', 'audit', 'persona', 'polish'].includes(phase) && ['live-opt', 'duan-adapt'].includes(p.mode) && !p.draft.trim() && !files.length) { setNotice('请粘贴原稿或导入文件。'); return; }
+        if (!['revision', 'audit', 'persona', 'polish'].includes(phase) && p.mode === 'duan-ba' && !p.videoPath.trim() && !files.length && !p.videoEvidence.trim()) { setNotice('请导入视频、填写本地路径或提供带时间段的证据资料。'); return; }
         const taskFiles = override ? [] : files;
         setBusy(true); setNotice('准备任务…');
         let target = p.sessionId;
@@ -241,7 +242,7 @@ window.__ModuleLoader__.load({
           const source = ['revision', 'audit'].includes(phase) ? (override?.repairText || (chosen && !['outline','audit'].includes(chosen.phase) ? chosen.text : scriptVersion?.text) || p.draft) : p.draft;
           const brief = { ...p.brief, conflict: p.brief.conflict || p.topic };
           const prompt = WB.buildPrompt({ project: p, brief, phase, draft: source, instruction: [
-            '主题：' + p.topic, '补充要求：' + p.notes, instruction,
+            '主题：' + p.topic, '补充要求：' + p.notes, instruction, phase === 'polish' ? HUMANIZE_RULES : '',
             p.outline ? '已确认大纲：\n' + p.outline : '',
             p.videoPath ? '运行 DSH 的电脑本地视频路径：' + p.videoPath : '',
             p.videoEvidence ? '已记录视频证据（逐条标注时间段、画面/音轨来源和不确定项）：\n' + p.videoEvidence : '',
@@ -511,7 +512,7 @@ window.__ModuleLoader__.load({
         const structureOnly = ['idea', 'outline', 'audit'].includes(chosen?.phase);
         return h('div', null,
           h('div', { style: card }, h('h2', { style: { fontSize: 17 } }, '生成结果与版本'),
-            project.pending ? h('p', { role: 'status' }, '任务运行中：' + ({idea:'思路',full:'全文',outline:'大纲',revision:'修订',audit:'审稿'})[project.pending.phase] + '（已等待 ' + elapsed + ' 秒）。可离开面板，返回后继续接收结果。') : null,
+            project.pending ? h('p', { role: 'status' }, '任务运行中：' + ({idea:'思路',full:'全文',outline:'大纲',revision:'修订',audit:'审稿',polish:'润色'})[project.pending.phase] + '（已等待 ' + elapsed + ' 秒）。可离开面板，返回后继续接收结果。') : null,
             project.retry && !project.pending ? h('div', { role: 'status', style: { ...card, background: T.layer2, borderColor: T.error } },
               h('strong', null, '上次任务未成功'),
               h('p', null, '原因：' + (project.retry.reason || '未知')),
@@ -522,12 +523,13 @@ window.__ModuleLoader__.load({
                 setStore((current) => ({ ...current, projects: current.projects.map((item) => item.id === stoppingId && item.pending?.taskId === stoppingTask ? { ...item, pending: null } : item) }));
               } catch (error) { setNotice(error.message); }
             } }, '停止生成')) : null,
-            project.versions.length ? h('select', { style: input, value: chosen?.id || '', onChange: (e) => setSelectedVersion(e.target.value) }, ...project.versions.map((v, i) => h('option', { key: v.id, value: v.id }, 'v' + (i + 1) + ' · ' + ({idea:'思路',full:'全文',outline:'大纲',revision:'修订',audit:'审稿',manual:'手动编辑'})[v.phase] + ' · ' + new Date(v.createdAt).toLocaleString()))) : null,
+            project.versions.length ? h('select', { style: input, value: chosen?.id || '', onChange: (e) => setSelectedVersion(e.target.value) }, ...project.versions.map((v, i) => h('option', { key: v.id, value: v.id }, 'v' + (i + 1) + ' · ' + ({idea:'思路',full:'全文',outline:'大纲',revision:'修订',audit:'审稿',manual:'手动编辑',polish:'润色'})[v.phase] + ' · ' + new Date(v.createdAt).toLocaleString()))) : null,
             h('pre', { style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontFamily: 'inherit', fontSize: 15, lineHeight: 1.9, minHeight: 140, maxHeight: 650, overflow: 'auto', padding: 12, background: T.layer2, borderRadius: 8 } }, activeText || output || '尚无结果。请先创作，或导入原稿后检查。'),
             output ? h('div', { style: row },
               h(Button, { onClick: async () => { try { await navigator.clipboard.writeText(output); setNotice('全文已复制'); } catch { setNotice('复制失败，请选中正文复制。'); } } }, '复制全文'),
               ...['md','txt','docx'].map((ext) => h(Button, { key: ext, onClick: () => download(project.title + '.' + ext, ext === 'docx' ? IO.buildDocxBytes(output) : output, ext === 'docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'text/plain;charset=utf-8') }, '下载 ' + ext.toUpperCase())),
               h(Button, { onClick: () => { change({ draft: output }); setTab('create'); setNotice('当前版本已作为创作原稿，历史版本保留。'); } }, '作为下一版原稿'),
+              h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask('polish', '请润色当前版本，只交付最终稿。', 0, { ...project, draft: output, deliverable: 'script' }) }, '文字润色'),
               h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask('audit', '[DSH_EXTRACT_CHARACTERS] 从当前成稿中提取人物卡草稿。只输出一个 ```json 代码块，内容是 {"characters":[{name,relationship,goal,knowledge,voice,state}]}，不要输出其他文字。') }, '提取人物卡草稿'),
               chosen.phase === 'idea' ? h(Button, { disabled: busy || !!project.pending, onClick: () => { change({ deliverable: 'outline' }); submitTask('outline', '基于当前思路扩展为大纲，保持人物、冲突和结尾方向。', 0, { ...project, draft: output, deliverable: 'outline' }); } }, '扩成大纲') : null,
               (chosen.phase === 'idea' || chosen.phase === 'outline') ? h(Button, { disabled: busy || !!project.pending, onClick: () => { change({ deliverable: 'script' }); submitTask('full', '基于当前版本扩写为完整剧本，保持已确定的人物、事实和结尾。', 0, { ...project, draft: output, deliverable: 'script' }); } }, '扩成剧本') : null,

@@ -2,7 +2,7 @@
 export const SCHEMA_VERSION = 1;
 export const STORAGE_KEY = 'elderly-script.workbench.v1';
 export const MODES = ['live', 'live-opt', 'duan-ba', 'duan-adapt'];
-const PHASES = ['idea', 'outline', 'full', 'revision', 'audit', 'persona'];
+const PHASES = ['idea', 'outline', 'full', 'revision', 'audit', 'persona', 'polish'];
 const INTENSITIES = ['light', 'structure', 'deep'];
 const BRIEF_FIELDS = ['relationship', 'conflict', 'goals', 'ending', 'lockedFacts', 'protectedLines'];
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -138,7 +138,7 @@ export function buildPrompt(options = {}) {
   if (strict && mode === 'duan-ba') lines.push('扒片：先按时间整理可见/可听证据表，再记录结构指纹；原片实际时长为基准，估算明确标注。');
   if (strict && mode === 'duan-adapt') lines.push('改编：先做母版结构项→新故事实现→锁定→冲突/补偿对照；保留钩子、功能位、阻力与证据递进、空间推进、阶段奖励、兑现和结尾债务；默认母版时长±15%，用户指定优先。');
   if (mode === 'live-opt' || phase === 'revision') lines.push('优化强度：' + intensity + '。' + ({ light: '仅修口语、赘句和交接，保留顺序与情节。', structure: '允许调整话轮和信息顺序，保留核心关系、因果与结局。', deep: '允许重构节奏和场景，逐项说明变更理由；锁定事实与保护台词仍保持。' })[intensity]);
-  lines.push(({ idea: '只给创作思路与方向，不写完整台词：用分点输出 1.一句话卖点 2.核心冲突（谁和谁、争什么）3.主播/一麦/二麦各自诉求 4.2-3个可用转折或爆点 5.结尾方向与续集钩子 6.3条可延展的系列选题。', outline: '只给大纲：给出结构骨架与分场/分段清单，不写完整台词。直播稿按话轮提纲（谁先开口、谁接话、第几段反转、哪里落泪、怎么收尾，标注功能与情绪走向）；短视频按场次骨架（位置、事件、冲突升级、证据或反转、结尾钩子、预计时长）。', full: live ? '本阶段只交付完整纯对白正文；输出前自查字数、交接和事实一致性，检查说明留待独立审稿，不混入正文。' : '本阶段交付完整正文；先按本模式协议自查，再明确尚待人工核实的事项。', revision: live ? '依据当前稿与修改要求只交付修订后的完整纯对白，不附修改清单或检查报告。' : '本阶段依据当前稿与修改要求交付修订正文，并给简短修改清单。', audit: '本阶段只审校，按位置/问题/依据/修复建议列出，不代写全文；区分机器可核对项与人工判断项。', persona: '只输出人设文字，不写剧本台词：包含称呼、年龄感、身份背景、性格、说话风格、口头禅、与观众的关系、擅长话题。' })[phase]);
+  lines.push(({ idea: '只给创作思路与方向，不写完整台词：用分点输出 1.一句话卖点 2.核心冲突（谁和谁、争什么）3.主播/一麦/二麦各自诉求 4.2-3个可用转折或爆点 5.结尾方向与续集钩子 6.3条可延展的系列选题。', outline: '只给大纲：给出结构骨架与分场/分段清单，不写完整台词。直播稿按话轮提纲（谁先开口、谁接话、第几段反转、哪里落泪、怎么收尾，标注功能与情绪走向）；短视频按场次骨架（位置、事件、冲突升级、证据或反转、结尾钩子、预计时长）。', full: live ? '本阶段只交付完整纯对白正文；输出前自查字数、交接和事实一致性，检查说明留待独立审稿，不混入正文。' : '本阶段交付完整正文；先按本模式协议自查，再明确尚待人工核实的事项。', revision: live ? '依据当前稿与修改要求只交付修订后的完整纯对白，不附修改清单或检查报告。' : '本阶段依据当前稿与修改要求交付修订正文，并给简短修改清单。', audit: '本阶段只审校，按位置/问题/依据/修复建议列出，不代写全文；区分机器可核对项与人工判断项。', persona: '只输出人设文字，不写剧本台词：包含称呼、年龄感、身份背景、性格、说话风格、口头禅、与观众的关系、擅长话题。', polish: '只做文字润色：删除空话、重复、拔高、客服腔和模板化表达，不扩写、不补论据、不重写观点；保留全部事实、确定程度和作者语气，没有问题的句子不改；默认只输出最终润色稿。' })[phase]);
   if (samples.length) lines.push('选中且与模式相关的样本（只借鉴结构、口吻，不把样本事实写成用户事实）：\n' + JSON.stringify(samples.map(({ id, title, text, notes }) => ({ id, title, text, notes })), null, 2));
   const draft = options.draft ?? project.draft;
   if (draft) lines.push('当前稿（资料）：\n' + draft);
