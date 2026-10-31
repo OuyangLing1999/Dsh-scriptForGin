@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = '2.4.0';
+export const CURRENT_VERSION = '2.5.0';
 export const REPOSITORY = 'OuyangLing1999/Dsh-scriptForGin';
 
 export function compareVersions(left, right) {
@@ -57,10 +57,14 @@ export async function checkForUpdates(fetcher = globalThis.fetch) {
       throw new Error('GitHub 返回的正式版本信息不完整。');
     }
     const latest = release.tag_name.replace(/^v/, '');
+    const assets = Array.isArray(release.assets) ? release.assets.filter(a => a && typeof a.browser_download_url === 'string') : [];
+    const asset = assets.find(a => /\.zip($|\?)/i.test(a.browser_download_url)) || assets[0];
     return {
       current: CURRENT_VERSION, latest,
       available: compareVersions(latest, CURRENT_VERSION) > 0,
       url: 'https://github.com/' + REPOSITORY + '/releases/tag/' + encodeURIComponent(release.tag_name),
+      assetUrl: asset ? asset.browser_download_url : '',
+      assetName: asset && typeof asset.name === 'string' ? asset.name : '',
       notes: typeof release.body === 'string' ? release.body.slice(0, 6000) : '',
     };
   } catch (error) {

@@ -9,7 +9,7 @@ window.__ModuleLoader__.load({
 const SCHEMA_VERSION = 1;
 const STORAGE_KEY = 'elderly-script.workbench.v1';
 const MODES = ['live', 'live-opt', 'duan-ba', 'duan-adapt'];
-const PHASES = ['idea', 'outline', 'full', 'revision', 'audit'];
+const PHASES = ['idea', 'outline', 'full', 'revision', 'audit', 'persona'];
 const INTENSITIES = ['light', 'structure', 'deep'];
 const BRIEF_FIELDS = ['relationship', 'conflict', 'goals', 'ending', 'lockedFacts', 'protectedLines'];
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -135,6 +135,7 @@ function buildPrompt(options = {}) {
     '创作简报：\n' + JSON.stringify(Object.fromEntries(BRIEF_FIELDS.map(key => [key, brief[key] || ''])), null, 2),
     '角色卡（称呼、身份/立场、目标、说话风格）：\n' + JSON.stringify(characters, null, 2),
   ];
+  if (typeof project.persona === 'string' && project.persona.trim()) lines.push('主播人设（请贴合此设定）：\n' + project.persona.trim());
   const strict = phase === 'full' || phase === 'revision';
   if (strict) {
     if (live) lines.push('直播协议：只用【角色名】行及纯对白。每段正式角色台词至少200个汉字；观点→生活细节→情感落点→明确交接。每次换人点名、提问、复述或接话；不写动作、神态、括号舞台提示和镜头。线上事件靠台词表达；通俗口语，数字时间金额换大白话复述。');
@@ -144,7 +145,7 @@ function buildPrompt(options = {}) {
   if (strict && mode === 'duan-ba') lines.push('扒片：先按时间整理可见/可听证据表，再记录结构指纹；原片实际时长为基准，估算明确标注。');
   if (strict && mode === 'duan-adapt') lines.push('改编：先做母版结构项→新故事实现→锁定→冲突/补偿对照；保留钩子、功能位、阻力与证据递进、空间推进、阶段奖励、兑现和结尾债务；默认母版时长±15%，用户指定优先。');
   if (mode === 'live-opt' || phase === 'revision') lines.push('优化强度：' + intensity + '。' + ({ light: '仅修口语、赘句和交接，保留顺序与情节。', structure: '允许调整话轮和信息顺序，保留核心关系、因果与结局。', deep: '允许重构节奏和场景，逐项说明变更理由；锁定事实与保护台词仍保持。' })[intensity]);
-  lines.push(({ idea: '只给创作思路与方向，不写完整台词：用分点输出 1.一句话卖点 2.核心冲突（谁和谁、争什么）3.主播/一麦/二麦各自诉求 4.2-3个可用转折或爆点 5.结尾方向与续集钩子 6.3条可延展的系列选题。', outline: '只给大纲：给出结构骨架与分场/分段清单，不写完整台词。直播稿按话轮提纲（谁先开口、谁接话、第几段反转、哪里落泪、怎么收尾，标注功能与情绪走向）；短视频按场次骨架（位置、事件、冲突升级、证据或反转、结尾钩子、预计时长）。', full: live ? '本阶段只交付完整纯对白正文；输出前自查字数、交接和事实一致性，检查说明留待独立审稿，不混入正文。' : '本阶段交付完整正文；先按本模式协议自查，再明确尚待人工核实的事项。', revision: live ? '依据当前稿与修改要求只交付修订后的完整纯对白，不附修改清单或检查报告。' : '本阶段依据当前稿与修改要求交付修订正文，并给简短修改清单。', audit: '本阶段只审校，按位置/问题/依据/修复建议列出，不代写全文；区分机器可核对项与人工判断项。' })[phase]);
+  lines.push(({ idea: '只给创作思路与方向，不写完整台词：用分点输出 1.一句话卖点 2.核心冲突（谁和谁、争什么）3.主播/一麦/二麦各自诉求 4.2-3个可用转折或爆点 5.结尾方向与续集钩子 6.3条可延展的系列选题。', outline: '只给大纲：给出结构骨架与分场/分段清单，不写完整台词。直播稿按话轮提纲（谁先开口、谁接话、第几段反转、哪里落泪、怎么收尾，标注功能与情绪走向）；短视频按场次骨架（位置、事件、冲突升级、证据或反转、结尾钩子、预计时长）。', full: live ? '本阶段只交付完整纯对白正文；输出前自查字数、交接和事实一致性，检查说明留待独立审稿，不混入正文。' : '本阶段交付完整正文；先按本模式协议自查，再明确尚待人工核实的事项。', revision: live ? '依据当前稿与修改要求只交付修订后的完整纯对白，不附修改清单或检查报告。' : '本阶段依据当前稿与修改要求交付修订正文，并给简短修改清单。', audit: '本阶段只审校，按位置/问题/依据/修复建议列出，不代写全文；区分机器可核对项与人工判断项。', persona: '只输出人设文字，不写剧本台词：包含称呼、年龄感、身份背景、性格、说话风格、口头禅、与观众的关系、擅长话题。' })[phase]);
   if (samples.length) lines.push('选中且与模式相关的样本（只借鉴结构、口吻，不把样本事实写成用户事实）：\n' + JSON.stringify(samples.map(({ id, title, text, notes }) => ({ id, title, text, notes })), null, 2));
   const draft = options.draft ?? project.draft;
   if (draft) lines.push('当前稿（资料）：\n' + draft);
@@ -403,7 +404,7 @@ async function readDocxText(input, inflate) {
 
 return {buildDocxBytes,readDocxText};
 })();
-    const CURRENT_VERSION = '2.4.0';
+    const CURRENT_VERSION = '2.5.0';
 const REPOSITORY = 'OuyangLing1999/Dsh-scriptForGin';
 
 function compareVersions(left, right) {
@@ -462,10 +463,14 @@ async function checkForUpdates(fetcher = globalThis.fetch) {
       throw new Error('GitHub 返回的正式版本信息不完整。');
     }
     const latest = release.tag_name.replace(/^v/, '');
+    const assets = Array.isArray(release.assets) ? release.assets.filter(a => a && typeof a.browser_download_url === 'string') : [];
+    const asset = assets.find(a => /\.zip($|\?)/i.test(a.browser_download_url)) || assets[0];
     return {
       current: CURRENT_VERSION, latest,
       available: compareVersions(latest, CURRENT_VERSION) > 0,
       url: 'https://github.com/' + REPOSITORY + '/releases/tag/' + encodeURIComponent(release.tag_name),
+      assetUrl: asset ? asset.browser_download_url : '',
+      assetName: asset && typeof asset.name === 'string' ? asset.name : '',
       notes: typeof release.body === 'string' ? release.body.slice(0, 6000) : '',
     };
   } catch (error) {
@@ -510,11 +515,11 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
     const modeLabels = { live: '直播创作', 'live-opt': '直播优化', 'duan-ba': '视频扒片', 'duan-adapt': '短视频改编' };
     function blankProject(title = '新剧本项目') {
       return WB.createProject({ id: uid(), title, topic: '', notes: '', videoPath: '', sessionId: '', autoRepair: true,
-        videoEvidence: '', fingerprint: '', outline: '', pending: null, retry: null, mode: 'live', draft: '', deliverable: 'script' });
+        videoEvidence: '', fingerprint: '', outline: '', pending: null, retry: null, mode: 'live', draft: '', deliverable: 'script', persona: '' });
     }
     function hydrateProject(value) {
       const p = { ...blankProject(), ...value };
-      for (const key of ['topic','notes','videoPath','sessionId','videoEvidence','fingerprint','outline']) if (typeof p[key] !== 'string') p[key] = '';
+      for (const key of ['topic','notes','videoPath','sessionId','videoEvidence','fingerprint','outline','persona']) if (typeof p[key] !== 'string') p[key] = '';
       p.brief = Object.fromEntries(Object.entries(p.brief).map(([key, entry]) => [key, Array.isArray(entry) ? entry.join('\n') : entry]));
       p.autoRepair = p.autoRepair !== false;
       if (!['idea', 'outline', 'script'].includes(p.deliverable)) p.deliverable = 'script';
@@ -653,6 +658,34 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
         setChecking(true); setDismissed(''); setUpdateError('');
         try { setUpdate(await checkForUpdates()); } catch (error) { setUpdateError(error.message); } finally { setChecking(false); }
       }
+      function downloadUpdate() {
+        if (!update) return;
+        const target = update.assetUrl || update.url;
+        const anchor = document.createElement('a');
+        anchor.href = target;
+        if (update.assetName) anchor.download = update.assetName;
+        anchor.rel = 'noopener';
+        document.body.appendChild(anchor); anchor.click(); anchor.remove();
+        setNotice(update.assetUrl ? '已开始下载更新包：' + (update.assetName || '') + '。解压后可在插件管理中安装。' : '已打开发布页。');
+      }
+      async function installUpdate() {
+        if (!update?.assetUrl) { setUpdateError('未找到更新包地址，请稍后重试。'); return; }
+        if (busy) return;
+        setBusy(true); setUpdateError(''); setNotice('正在把更新交给 DSH 安装…');
+        try {
+          const sessionId = await ctx.sessions.create({});
+          const text = '请帮我更新 DSH 插件「剧本工具」到 v' + update.latest + '：\n1) 下载更新包 ' + update.assetUrl + ' 到本地临时目录；\n2) 解压该 ZIP；\n3) 调用 plugin_manager(action:"install_bundle", target:"<解压后的目录>") 安装；\n4) 完成后回复安装结果和版本号。不要修改我的项目数据。';
+          const reference = ctx.sessions.retain(sessionId, { source: 'controllerOperation' });
+          try {
+            const binding = await reference.ready;
+            const result = await binding.session.prompt([{ type: 'text', text }], 'queue', undefined, 'update-' + Date.now());
+            if (!result.ok) throw result.error;
+          } finally { reference.release(); }
+          setNotice('已交给 DSH 在后台安装，完成后请刷新页面。');
+          ctx.uiWorkspace.openSession(sessionId);
+        } catch (error) { setUpdateError('更新失败：' + error.message); }
+        finally { setBusy(false); }
+      }
       const latest = project.versions.at(-1);
       const chosen = project.versions.find((v) => v.id === selectedVersion) || latest;
       const output = chosen?.text || '';
@@ -661,9 +694,9 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
         if (busy) return;
         const p = override || projectRef.current;
         if (p.pending && !override) { setNotice('项目已有任务运行，完成后再提交。'); return; }
-        if (!['revision', 'audit'].includes(phase) && p.mode === 'live' && !p.topic.trim() && !p.brief.conflict.trim()) { setNotice('请填写主题或本集冲突。'); return; }
-        if (!['revision', 'audit'].includes(phase) && ['live-opt', 'duan-adapt'].includes(p.mode) && !p.draft.trim() && !files.length) { setNotice('请粘贴原稿或导入文件。'); return; }
-        if (!['revision', 'audit'].includes(phase) && p.mode === 'duan-ba' && !p.videoPath.trim() && !files.length && !p.videoEvidence.trim()) { setNotice('请导入视频、填写本地路径或提供带时间段的证据资料。'); return; }
+        if (!['revision', 'audit', 'persona'].includes(phase) && p.mode === 'live' && !p.topic.trim() && !p.brief.conflict.trim()) { setNotice('请填写主题或本集冲突。'); return; }
+        if (!['revision', 'audit', 'persona'].includes(phase) && ['live-opt', 'duan-adapt'].includes(p.mode) && !p.draft.trim() && !files.length) { setNotice('请粘贴原稿或导入文件。'); return; }
+        if (!['revision', 'audit', 'persona'].includes(phase) && p.mode === 'duan-ba' && !p.videoPath.trim() && !files.length && !p.videoEvidence.trim()) { setNotice('请导入视频、填写本地路径或提供带时间段的证据资料。'); return; }
         const taskFiles = override ? [] : files;
         setBusy(true); setNotice('准备任务…');
         let target = p.sessionId;
@@ -718,6 +751,11 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
         }
         const phase = p.pending.phase;
         const taskMode = p.pending.mode || p.mode;
+        if (phase === 'persona') {
+          change({ personaDraft: live.text.trim(), pending: null }, p.id);
+          setNotice('已生成人设草稿，请在「人物与样稿」中查看、修改并采用。');
+          return;
+        }
         const version = { id: uid(), text: live.text, phase, createdAt: new Date().toISOString(), taskId: live.taskId, mode: taskMode };
         const versions = [...p.versions, version];
         change({ versions, pending: null }, p.id); setSelectedVersion(version.id);
@@ -828,11 +866,13 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
               h('h2', { style: { fontSize: 17, marginTop: 0 } }, '创作资料'),
               h(Field, { label: '主题 / 本集任务', value: project.topic, onChange: (topic) => { change({ topic }); setConfirmed(false); setFieldErrors((old) => ({ ...old, topic: '' })); }, placeholder: '谁遇到什么问题，这集要解决什么？' }),
               err(fieldErrors.topic),
-              h('label', null, '创作模式', h('select', { style: input, value: project.mode, onChange: (e) => { change({ mode: e.target.value }); setConfirmed(false); setFieldErrors({}); } }, Object.entries(modeLabels).map(([id, label]) => h('option', { key: id, value: id }, label)))),
-              h('label', null, '这次要什么', h('select', { style: input, value: project.deliverable || 'script', onChange: (e) => { change({ deliverable: e.target.value }); setConfirmed(false); } },
-                h('option', { value: 'idea' }, '只想要思路（方向建议，不写台词）'),
-                h('option', { value: 'outline' }, '要大纲（结构骨架，不写全文）'),
-                h('option', { value: 'script' }, '要完整剧本（可直接用）'))),
+              h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 12 } },
+                h('label', null, '创作模式', h('select', { style: { ...input, marginBottom: 0 }, value: project.mode, onChange: (e) => { change({ mode: e.target.value }); setConfirmed(false); setFieldErrors({}); } }, Object.entries(modeLabels).map(([id, label]) => h('option', { key: id, value: id }, label)))),
+                h('label', null, '这次要什么', h('select', { style: { ...input, marginBottom: 0 }, value: project.deliverable || 'script', onChange: (e) => { change({ deliverable: e.target.value }); setConfirmed(false); } },
+                  h('option', { value: 'idea' }, '只想要思路'),
+                  h('option', { value: 'outline' }, '要大纲'),
+                  h('option', { value: 'script' }, '要完整剧本')))),
+              h('div', { style: { height: 6 } }),
               ['live-opt', 'duan-adapt'].includes(project.mode) ? h('div', null,
                 h(Field, { label: '原稿 / 母版（也可拖入 TXT、Markdown、Word）', value: project.draft, rows: 9, onChange: (draft) => { change({ draft }); setFieldErrors((old) => ({ ...old, draft: '' })); } }),
                 err(fieldErrors.draft),
@@ -879,6 +919,17 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
         const allTags = [...new Set(project.samples.flatMap((sample) => sample.tags || []))];
         const visibleSamples = sampleTagFilter ? project.samples.filter((sample) => (sample.tags || []).includes(sampleTagFilter)) : project.samples;
         return h('div', null,
+          h('div', { style: card }, h('h2', { style: { fontSize: 17 } }, '主播人设'),
+            h('p', { style: { color: T.muted, fontSize: 13 } }, '粘贴你的人设让 AI 优化，或让 AI 生成一个再由你修改；人设会用于后续创作。'),
+            h(Field, { label: '我的人设', value: project.persona || '', rows: 6, onChange: (persona) => change({ persona }) }),
+            h('div', { style: row },
+              h(Button, { disabled: busy || !!project.pending, onClick: () => { if (!(project.persona || '').trim()) { setNotice('请先粘贴你的人设。'); return; } submitTask('persona', '优化下面这段人设，使其更适合 60 岁以上老年观众直播：保留真实信息，强化身份、性格、说话风格、与观众的关系和记忆点。只输出优化后的人设文字，不要解释。\n\n原人设：\n' + project.persona); } }, '优化我的人设'),
+              h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask('persona', '根据主题生成一个适合 60 岁以上老年观众直播的主播人设，包含称呼、年龄感、身份背景、性格、说话风格、口头禅、与观众的关系、擅长话题。只输出人设文字。\n\n主题：' + (project.topic || '孝道与家庭伦理')) }, '给我一个人设')),
+            project.personaDraft ? h('div', { style: { ...card, background: T.layer2, marginTop: 10 } },
+              h('strong', null, '人设草稿'),
+              h('pre', { style: { whiteSpace: 'pre-wrap', fontFamily: 'inherit', lineHeight: 1.7, maxHeight: 260, overflow: 'auto' } }, project.personaDraft),
+              h('div', { style: row }, h(Button, { primary: true, onClick: () => { change({ persona: project.personaDraft, personaDraft: null }); setNotice('已采用该人设。'); } }, '采用此版本'), h(Button, { onClick: () => change({ personaDraft: null }) }, '丢弃'))) : null,
+          ),
           project.characterDraft?.length ? h('div', { style: { ...card, borderColor: T.brand } }, h('strong', null, '待确认人物卡草稿'),
             h('p', { style: { color: T.muted, fontSize: 13 } }, '由 AI 从成稿提取，请勾选要合并的人物，确认后写入人物卡。'),
             ...project.characterDraft.map((draft, index) => h('label', { key: index, style: { display: 'block', margin: '4px 0' } },
@@ -998,9 +1049,21 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
           ) : null,
         );
       }
-      return h('div', { style: { boxSizing: 'border-box', height: '100%', overflowY: 'auto', maxWidth: 1100, margin: '0 auto', padding: '24px 24px 48px', color: T.text, fontSize: fontScale === 'large' ? 16.5 : 14 } },
-        h('h1', { style: { margin: '0 0 8px', fontSize: 24 } }, '剧本工具'),
-        h('p', { style: { color: T.muted } }, '项目资料 → 创作确认 → 生成 → 检查返修 → 成稿版本'),
+      return h('div', { style: { boxSizing: 'border-box', height: '100%', overflowY: 'auto', maxWidth: 1000, margin: '0 auto', padding: '24px 24px 48px', color: T.text, fontSize: fontScale === 'large' ? 16.5 : 14, lineHeight: 1.6 } },
+        h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap', marginBottom: 16 } },
+          h('div', { style: { minWidth: 240 } },
+            h('h1', { style: { margin: '0 0 4px', fontSize: 24 } }, '剧本工具'),
+            h('p', { style: { color: T.muted, margin: 0, fontSize: 13 } }, '填资料 → 确认要点 → 生成 → 结果与版本'),
+          ),
+          h('div', { style: { ...row, justifyContent: 'flex-end' } },
+            h('span', { style: { color: T.muted, fontSize: 13 } }, 'v' + CURRENT_VERSION),
+            h(Button, { disabled: checking, onClick: checkUpdate }, checking ? '检查中…' : '检查更新'),
+            h(Button, { onClick: () => setShowHint(true) }, '使用引导'),
+            h(Button, { onClick: () => { const next = fontScale === 'large' ? 'normal' : 'large'; setFontScale(next); try { localStorage.setItem(fontScaleKey, next); } catch {} } }, fontScale === 'large' ? '标准字号' : '大字号'),
+          ),
+        ),
+        updateError ? h('p', { role: 'alert', style: { color: T.error, margin: '0 0 12px', fontSize: 13 } }, updateError) : null,
+        update && !update.available ? h('p', { style: { color: T.muted, margin: '0 0 12px', fontSize: 13 } }, '已检查：当前无可用的新正式版本。') : null,
         showHint ? h('div', { role: 'status', style: { ...card, borderColor: T.brand } },
           h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' } },
             h('strong', { style: { fontSize: 16 } }, '新手引导：四步写出剧本'),
@@ -1025,13 +1088,15 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
         ) : null,
         update?.available && dismissed !== update.latest ? h('section', { role: 'status', style: { ...card, borderColor: T.brand } }, h('strong', null, '发现新版 v' + update.latest),
           h('details', null, h('summary', null, '更新说明'), h('pre', { style: { whiteSpace: 'pre-wrap' } }, update.notes)),
-          h('div', { style: row }, h('a', { href: update.url, target: '_blank', rel: 'noopener noreferrer', style: { color: T.brand } }, '查看并下载更新'), h(Button, { onClick: () => setDismissed(update.latest) }, '稍后再说'))) : null,
+          h('div', { style: row },
+            h(Button, { primary: true, disabled: busy, onClick: installUpdate }, '在插件内更新'),
+            h(Button, { onClick: downloadUpdate }, '下载安装包'),
+            h(Button, { onClick: () => setDismissed(update.latest) }, '稍后再说'))) : null,
         h('div', { style: card }, h('div', { style: row },
           h('label', null, '项目 ', h('select', { value: project.id, style: { ...input, width: 'auto', maxWidth: 200, marginBottom: 0 }, onChange: (e) => setStore((current) => ({ ...current, activeId: e.target.value })) }, ...store.projects.map((p) => h('option', { key: p.id, value: p.id }, p.title)))),
           h('label', null, '名称 ', h('input', { value: project.title, onChange: (e) => change({ title: e.target.value }), style: { ...input, width: 150, marginBottom: 0 } })),
           h(Button, { onClick: addProject }, '新建'), h(Button, { onClick: deleteProject, disabled: !!project.pending || busy }, '删除'), h(Button, { onClick: () => download(project.title + '-项目备份.json', WB.exportBackup(project), 'application/json') }, '备份'),
           h('label', null, '导入 ', h('input', { type: 'file', accept: '.json', onChange: importBackup, style: { maxWidth: 160 } })),
-          h(Button, { onClick: () => { const next = fontScale === 'large' ? 'normal' : 'large'; setFontScale(next); try { localStorage.setItem(fontScaleKey, next); } catch {} } }, fontScale === 'large' ? '标准字号' : '大字号'),
           h('small', { role: 'status', style: { color: T.muted } }, saveStatus || store.error || '正在读取草稿…'),
           store.conflict ? h(Button, { onClick: () => {
             const disk = loadCatalog();
@@ -1048,10 +1113,7 @@ const LIVE_RULES = "---\nname: elderly-livestream-script\ndescription: \"为60�
         notice ? h('div', { role: 'status', style: { ...card, borderColor: T.brand } }, notice) : null,
         h('nav', { 'aria-label': '剧本工作区', style: { ...row, marginBottom: 16 } }, ...[['create','创作'],['library','人物与样稿'],['result','结果与版本']].map(([key,label]) => h(Button, { key, primary: tab === key, onClick: () => setTab(key) }, label))),
         tab === 'result' ? resultView() : h('fieldset', { disabled: busy || !!project.pending || !!repairQueue, style: { border: 0, padding: 0, margin: 0, minWidth: 0 } }, tab === 'create' ? creativeForm() : libraryView()),
-        h('div', { style: card }, h('div', { style: row }, h('span', null, '当前版本 v' + CURRENT_VERSION), h(Button, { disabled: checking, onClick: checkUpdate }, checking ? '检查中…' : '检查更新'), h(Button, { onClick: () => setShowHint(true) }, '使用引导')),
-          h('small', { style: { color: T.muted } }, '打开面板自动检查，保持打开时每30分钟重查。由你决定是否更新。'),
-          updateError ? h('p', { role: 'alert', style: { color: T.error } }, updateError) : null,
-          update && !update.available ? h('p', null, '已检查：当前无可用的新正式版本。') : null),
+        h('p', { style: { color: T.muted, fontSize: 12, marginTop: 24, textAlign: 'center' } }, '打开面板自动检查更新，保持打开时每 30 分钟重查；由你决定是否更新。'),
       );
     }
     function Icon({ size = 20 }) { return h('svg', { viewBox: '0 0 24 24', width: size, height: size, 'aria-hidden': true }, h('rect', { x: 4, y: 2, width: 16, height: 20, rx: 3, fill: 'none', stroke: 'currentColor', strokeWidth: 1.6 }), ...[7,12,17].map((y) => h('path', { key: y, d: 'M8 ' + y + 'h8', stroke: 'currentColor', strokeWidth: 1.6 }))); }

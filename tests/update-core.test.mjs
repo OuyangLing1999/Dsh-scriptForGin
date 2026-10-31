@@ -66,10 +66,12 @@ test('new release produces an update and trusted release link', async () => {
   const result = await checkForUpdates(async (url, options) => {
     assert.match(url, /OuyangLing1999\/Dsh-scriptForGin\/releases\/latest$/);
     assert.equal(options.cache, 'no-store');
-    return { ok: true, json: async () => ({ tag_name: 'v99.0.0', body: '更新说明', html_url: 'https://example.invalid' }) };
+    return { ok: true, json: async () => ({ tag_name: 'v99.0.0', body: '更新说明', html_url: 'https://example.invalid', assets: [{ name: 'pkg.zip', browser_download_url: 'https://example.invalid/pkg.zip' }, { name: 'readme.txt', browser_download_url: 'https://example.invalid/readme.txt' }] }) };
   });
   assert.equal(result.available, true);
   assert.match(result.url, /^https:\/\/github.com\/OuyangLing1999\/Dsh-scriptForGin\/releases\/tag\//);
+  assert.equal(result.assetUrl, 'https://example.invalid/pkg.zip');
+  assert.equal(result.assetName, 'pkg.zip');
 });
 test('same or older upstream is not advertised as an update', async () => {
   for (const version of [CURRENT_VERSION, '0.1.0']) {
