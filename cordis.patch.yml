@@ -1,0 +1,4 @@
+- insert:
+    - id: elderly-script
+      name: '@local/elderly-script'
+      config: {}
