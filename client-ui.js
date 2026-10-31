@@ -341,7 +341,7 @@ window.__ModuleLoader__.load({
           if (Object.keys(errors).length) { setNotice('还有必填项没有完成，请按红色提示补充。'); return; }
           setNotice(''); setCreateStep('confirm');
         };
-        const stepStyle = (active) => ({ padding: '6px 12px', borderRadius: 999, background: active ? T.brand : T.layer2, color: T.text, fontWeight: 600, fontSize: 13 });
+        const stepStyle = (active) => ({ padding: '6px 12px', borderRadius: 999, background: active ? T.brand : T.layer2, color: active ? 'var(--dsw-alias-bg-base)' : T.text, fontWeight: 600, fontSize: 13 });
         return h('div', null,
           h('div', { style: { ...row, marginBottom: 14 } },
             h('span', { style: stepStyle(createStep === 'form') }, '第 1 步 · 填资料'),
