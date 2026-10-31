@@ -81,6 +81,8 @@ plugin_manager(action: install_bundle, target: <本仓库本地路径>)
 
 ## 检查更新与发布
 
+面板打开时自动检查 GitHub 最新正式版，保持打开时每 30 分钟重查，离开面板后停止。有新版时，顶部显示更新提醒、可展开的更新说明和「查看并下载更新」入口；用户可选择「稍后再说」，继续创作。底部保留当前版本和手动「检查更新」。自动检查失败会在底部提示原因，并在下一周期重试。所有下载安装由用户主动决定。
+
 面板底部显示当前版本，点击「检查更新」会查询本仓库最新 GitHub 正式 Release，显示新版本、更新说明和下载入口。请求超时或受 GitHub 限流时可重试，不会将失败误报为已是最新版。下载 ZIP 后解压，通过 DSH 插件管理安装解压目录并刷新页面；该按钮不会自动替换插件文件。
 
 每次版本更新都同步到 GitHub：修改 package.json 版本并填写 RELEASE_NOTES.md 后运行 `node scripts/release.mjs`，自动同步界面版本、运行检查、提交代码、推送 main 与版本标签，并上传 ZIP 到 GitHub Release。需要本机 Git、已登录的 gh CLI 和可用的 GitHub 网络连接。仅检查使用 `node scripts/release.mjs --check`。

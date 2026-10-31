@@ -1,4 +1,4 @@
-export const CURRENT_VERSION = '1.2.0';
+export const CURRENT_VERSION = '1.3.0';
 export const REPOSITORY = 'OuyangLing1999/Dsh-scriptForGin';
 
 export function compareVersions(left, right) {
@@ -12,6 +12,31 @@ export function compareVersions(left, right) {
     if (a[i] !== b[i]) return a[i] > b[i] ? 1 : -1;
   }
   return 0;
+}
+
+export const AUTO_UPDATE_INTERVAL_MS = 30 * 60 * 1000;
+
+export function startAutoUpdateChecks({
+  check = checkForUpdates, onResult, onError = () => {},
+  schedule = setInterval, cancel = clearInterval,
+}) {
+  let stopped = false;
+  let running = false;
+  async function tick() {
+    if (stopped || running) return;
+    running = true;
+    try {
+      const result = await check();
+      if (!stopped) onResult(result);
+    } catch (error) {
+      if (!stopped) onError(error);
+    } finally {
+      running = false;
+    }
+  }
+  void tick();
+  const timer = schedule(tick, AUTO_UPDATE_INTERVAL_MS);
+  return () => { stopped = true; cancel(timer); };
 }
 
 export async function checkForUpdates(fetcher = globalThis.fetch) {
