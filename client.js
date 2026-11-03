@@ -9,7 +9,7 @@ window.__ModuleLoader__.load({
 const SCHEMA_VERSION = 1;
 const STORAGE_KEY = 'elderly-script.workbench.v1';
 const MODES = ['live', 'live-opt', 'duan-ba', 'duan-adapt'];
-const PHASES = ['idea', 'outline', 'full', 'revision', 'audit', 'persona', 'polish'];
+const PHASES = ['idea', 'idea-opt', 'outline', 'outline-opt', 'full', 'revision', 'audit', 'persona', 'polish'];
 const INTENSITIES = ['light', 'structure', 'deep'];
 const BRIEF_FIELDS = ['relationship', 'conflict', 'goals', 'ending', 'lockedFacts', 'protectedLines'];
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -145,7 +145,7 @@ function buildPrompt(options = {}) {
   if (strict && mode === 'duan-ba') lines.push('扒片：先按时间整理可见/可听证据表，再记录结构指纹；原片实际时长为基准，估算明确标注。');
   if (strict && mode === 'duan-adapt') lines.push('改编：先做母版结构项→新故事实现→锁定→冲突/补偿对照；保留钩子、功能位、阻力与证据递进、空间推进、阶段奖励、兑现和结尾债务；默认母版时长±15%，用户指定优先。');
   if (mode === 'live-opt' || phase === 'revision') lines.push('优化强度：' + intensity + '。' + ({ light: '仅修口语、赘句和交接，保留顺序与情节。', structure: '允许调整话轮和信息顺序，保留核心关系、因果与结局。', deep: '允许重构节奏和场景，逐项说明变更理由；锁定事实与保护台词仍保持。' })[intensity]);
-  lines.push(({ idea: '只给创作思路与方向，不写完整台词：用分点输出 1.一句话卖点 2.核心冲突（谁和谁、争什么）3.主播/一麦/二麦各自诉求 4.2-3个可用转折或爆点 5.结尾方向与续集钩子 6.3条可延展的系列选题。', outline: '只给大纲：给出结构骨架与分场/分段清单，不写完整台词。直播稿按话轮提纲（谁先开口、谁接话、第几段反转、哪里落泪、怎么收尾，标注功能与情绪走向）；短视频按场次骨架（位置、事件、冲突升级、证据或反转、结尾钩子、预计时长）。', full: live ? '本阶段只交付完整纯对白正文；输出前自查字数、交接和事实一致性，检查说明留待独立审稿，不混入正文。' : '本阶段交付完整正文；先按本模式协议自查，再明确尚待人工核实的事项。', revision: live ? '依据当前稿与修改要求只交付修订后的完整纯对白，不附修改清单或检查报告。' : '本阶段依据当前稿与修改要求交付修订正文，并给简短修改清单。', audit: '本阶段只审校，按位置/问题/依据/修复建议列出，不代写全文；区分机器可核对项与人工判断项。', persona: '只输出人设文字，不写剧本台词：包含称呼、年龄感、身份背景、性格、说话风格、口头禅、与观众的关系、擅长话题。', polish: '只做文字润色：删除空话、重复、拔高、客服腔和模板化表达，不扩写、不补论据、不重写观点；保留全部事实、确定程度和作者语气，没有问题的句子不改；默认只输出最终润色稿。' })[phase]);
+  lines.push(({ idea: '只给创作思路与方向，不写完整台词：用分点输出 1.一句话卖点 2.核心冲突（谁和谁、争什么）3.主播/一麦/二麦各自诉求 4.2-3个可用转折或爆点 5.结尾方向与续集钩子 6.3条可延展的系列选题。', 'idea-opt': '只优化思路方向，不写完整台词：调整选题角度、冲突与人物诉求、可用转折和结尾钩子；保留已确定的事实、人物与结局方向，没有问题的部分不改，默认只输出优化后的思路。', outline: '只给大纲：给出结构骨架与分场/分段清单，不写完整台词。直播稿按话轮提纲（谁先开口、谁接话、第几段反转、哪里落泪、怎么收尾，标注功能与情绪走向）；短视频按场次骨架（位置、事件、冲突升级、证据或反转、结尾钩子、预计时长）。', 'outline-opt': '只优化大纲结构，不写完整台词：调整话轮或场次顺序、冲突升级节奏、爆点与钩子位置、结尾收束；保留人物、事实和结局方向，没有问题的部分不改，默认只输出优化后的大纲。', full: live ? '本阶段只交付完整纯对白正文；输出前自查字数、交接和事实一致性，检查说明留待独立审稿，不混入正文。' : '本阶段交付完整正文；先按本模式协议自查，再明确尚待人工核实的事项。', revision: live ? '依据当前稿与修改要求只交付修订后的完整纯对白，不附修改清单或检查报告。' : '本阶段依据当前稿与修改要求交付修订正文，并给简短修改清单。', audit: '本阶段只审校，按位置/问题/依据/修复建议列出，不代写全文；区分机器可核对项与人工判断项。', persona: '只输出人设文字，不写剧本台词：包含称呼、年龄感、身份背景、性格、说话风格、口头禅、与观众的关系、擅长话题。', polish: '只做文字润色：删除空话、重复、拔高、客服腔和模板化表达，不扩写、不补论据、不重写观点；保留全部事实、确定程度和作者语气，没有问题的句子不改；默认只输出最终润色稿。' })[phase]);
   if (samples.length) lines.push('选中且与模式相关的样本（只借鉴结构、口吻，不把样本事实写成用户事实）：\n' + JSON.stringify(samples.map(({ id, title, text, notes }) => ({ id, title, text, notes })), null, 2));
   const draft = options.draft ?? project.draft;
   if (draft) lines.push('当前稿（资料）：\n' + draft);
@@ -404,7 +404,7 @@ async function readDocxText(input, inflate) {
 
 return {buildDocxBytes,readDocxText};
 })();
-    const CURRENT_VERSION = '2.6.1';
+    const CURRENT_VERSION = '2.7.0';
 const REPOSITORY = 'OuyangLing1999/Dsh-scriptForGin';
 
 function compareVersions(left, right) {
@@ -725,9 +725,9 @@ const HUMANIZE_PATTERNS = [
         if (busy) return;
         const p = override || projectRef.current;
         if (p.pending && !override) { setNotice('项目已有任务运行，完成后再提交。'); return; }
-        if (!['revision', 'audit', 'persona', 'polish'].includes(phase) && p.mode === 'live' && !p.topic.trim() && !p.brief.conflict.trim()) { setNotice('请填写主题或本集冲突。'); return; }
-        if (!['revision', 'audit', 'persona', 'polish'].includes(phase) && ['live-opt', 'duan-adapt'].includes(p.mode) && !p.draft.trim() && !files.length) { setNotice('请粘贴原稿或导入文件。'); return; }
-        if (!['revision', 'audit', 'persona', 'polish'].includes(phase) && p.mode === 'duan-ba' && !p.videoPath.trim() && !files.length && !p.videoEvidence.trim()) { setNotice('请导入视频、填写本地路径或提供带时间段的证据资料。'); return; }
+        if (!['revision', 'audit', 'persona', 'polish', 'outline-opt', 'idea-opt'].includes(phase) && p.mode === 'live' && !p.topic.trim() && !p.brief.conflict.trim()) { setNotice('请填写主题或本集冲突。'); return; }
+        if (!['revision', 'audit', 'persona', 'polish', 'outline-opt', 'idea-opt'].includes(phase) && ['live-opt', 'duan-adapt'].includes(p.mode) && !p.draft.trim() && !files.length) { setNotice('请粘贴原稿或导入文件。'); return; }
+        if (!['revision', 'audit', 'persona', 'polish', 'outline-opt', 'idea-opt'].includes(phase) && p.mode === 'duan-ba' && !p.videoPath.trim() && !files.length && !p.videoEvidence.trim()) { setNotice('请导入视频、填写本地路径或提供带时间段的证据资料。'); return; }
         const taskFiles = override ? [] : files;
         setBusy(true); setNotice('准备任务…');
         let target = p.sessionId;
@@ -743,8 +743,8 @@ const HUMANIZE_PATTERNS = [
             parts.push({ type: 'file', receiptId: receipt.value.receiptId });
           }
           const taskId = uid();
-          const scriptVersion = [...p.versions].reverse().find((v) => !['outline','audit'].includes(v.phase));
-          const source = ['revision', 'audit'].includes(phase) ? (override?.repairText || (chosen && !['outline','audit'].includes(chosen.phase) ? chosen.text : scriptVersion?.text) || p.draft) : p.draft;
+          const editPhases = ['revision', 'audit', 'outline-opt', 'idea-opt'];
+          const source = editPhases.includes(phase) ? (override?.repairText || chosen?.text || p.draft) : p.draft;
           const brief = { ...p.brief, conflict: p.brief.conflict || p.topic };
           const prompt = WB.buildPrompt({ project: p, brief, phase, draft: source, instruction: [
             '主题：' + p.topic, '补充要求：' + p.notes, instruction, phase === 'polish' ? HUMANIZE_RULES : '',
@@ -791,7 +791,9 @@ const HUMANIZE_PATTERNS = [
         const versions = [...p.versions, version];
         change({ versions, pending: null }, p.id); setSelectedVersion(version.id);
         if (phase === 'idea') { setNotice('思路已生成；满意的话可在结果区「扩成大纲」或「扩成剧本」。'); return; }
+        if (phase === 'idea-opt') { setNotice('思路已优化；满意的话可「扩成大纲」或「扩成剧本」。'); return; }
         if (phase === 'outline') { setNotice('大纲已生成；满意的话可在结果区「扩成剧本」。'); return; }
+        if (phase === 'outline-opt') { setNotice('大纲已优化；满意的话可「扩成剧本」。'); return; }
         if (phase === 'audit') {
           if ((p.pending.instruction || '').includes('[DSH_EXTRACT_CHARACTERS]')) {
             const draft = parseCharacterDraft(live.text);
@@ -1014,10 +1016,11 @@ const HUMANIZE_PATTERNS = [
           }
         }
         const activeText = project.pending && live?.taskId === project.pending.taskId ? live.text : '';
-        const structureOnly = ['idea', 'outline', 'audit'].includes(chosen?.phase);
+        const structureOnly = ['idea', 'idea-opt', 'outline', 'outline-opt', 'audit'].includes(chosen?.phase);
+        const revisePhase = chosen?.phase === 'idea' ? 'idea-opt' : chosen?.phase === 'outline' ? 'outline-opt' : 'revision';
         return h('div', null,
           h('div', { style: card }, h('h2', { style: { fontSize: 17 } }, '生成结果与版本'),
-            project.pending ? h('p', { role: 'status' }, '任务运行中：' + ({idea:'思路',full:'全文',outline:'大纲',revision:'修订',audit:'审稿',polish:'润色'})[project.pending.phase] + '（已等待 ' + elapsed + ' 秒）。可离开面板，返回后继续接收结果。') : null,
+            project.pending ? h('p', { role: 'status' }, '任务运行中：' + ({idea:'思路','idea-opt':'思路优化',full:'全文',outline:'大纲','outline-opt':'大纲优化',revision:'修订',audit:'审稿',polish:'润色'})[project.pending.phase] + '（已等待 ' + elapsed + ' 秒）。可离开面板，返回后继续接收结果。') : null,
             project.retry && !project.pending ? h('div', { role: 'status', style: { ...card, background: T.layer2, borderColor: T.error } },
               h('strong', null, '上次任务未成功'),
               h('p', null, '原因：' + (project.retry.reason || '未知')),
@@ -1028,13 +1031,15 @@ const HUMANIZE_PATTERNS = [
                 setStore((current) => ({ ...current, projects: current.projects.map((item) => item.id === stoppingId && item.pending?.taskId === stoppingTask ? { ...item, pending: null } : item) }));
               } catch (error) { setNotice(error.message); }
             } }, '停止生成')) : null,
-            project.versions.length ? h('select', { style: input, value: chosen?.id || '', onChange: (e) => setSelectedVersion(e.target.value) }, ...project.versions.map((v, i) => h('option', { key: v.id, value: v.id }, 'v' + (i + 1) + ' · ' + ({idea:'思路',full:'全文',outline:'大纲',revision:'修订',audit:'审稿',manual:'手动编辑',polish:'润色'})[v.phase] + ' · ' + new Date(v.createdAt).toLocaleString()))) : null,
+            project.versions.length ? h('select', { style: input, value: chosen?.id || '', onChange: (e) => setSelectedVersion(e.target.value) }, ...project.versions.map((v, i) => h('option', { key: v.id, value: v.id }, 'v' + (i + 1) + ' · ' + ({idea:'思路','idea-opt':'思路优化',full:'全文',outline:'大纲','outline-opt':'大纲优化',revision:'修订',audit:'审稿',manual:'手动编辑',polish:'润色'})[v.phase] + ' · ' + new Date(v.createdAt).toLocaleString()))) : null,
             h('pre', { style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontFamily: 'inherit', fontSize: 15, lineHeight: 1.9, minHeight: 140, maxHeight: 650, overflow: 'auto', padding: 12, background: T.layer2, borderRadius: 8 } }, activeText || output || '尚无结果。请先创作，或导入原稿后检查。'),
             output ? h('div', { style: row },
               h(Button, { onClick: async () => { try { await navigator.clipboard.writeText(output); setNotice('全文已复制'); } catch { setNotice('复制失败，请选中正文复制。'); } } }, '复制全文'),
               ...['md','txt','docx'].map((ext) => h(Button, { key: ext, onClick: () => download(project.title + '.' + ext, ext === 'docx' ? IO.buildDocxBytes(output) : output, ext === 'docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'text/plain;charset=utf-8') }, '下载 ' + ext.toUpperCase())),
               h(Button, { onClick: () => { change({ draft: output }); setTab('create'); setNotice('当前版本已作为创作原稿，历史版本保留。'); } }, '作为下一版原稿'),
               h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask('polish', '请润色当前版本，只交付最终稿。', 0, { ...project, draft: output, deliverable: 'script' }) }, '文字润色'),
+              chosen.phase === 'idea' ? h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask('idea-opt', revision || '请优化这条思路：调整选题角度、冲突与人物诉求、可用转折和结尾钩子，保留已确定事实。') }, '优化思路') : null,
+              chosen.phase === 'outline' ? h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask('outline-opt', revision || '请优化这份大纲：调整话轮或场次顺序、冲突升级节奏、爆点与钩子位置、结尾收束，保留人物与事实。') }, '优化大纲') : null,
               h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask('audit', '[DSH_EXTRACT_CHARACTERS] 从当前成稿中提取人物卡草稿。只输出一个 ```json 代码块，内容是 {"characters":[{name,relationship,goal,knowledge,voice,state}]}，不要输出其他文字。') }, '提取人物卡草稿'),
               chosen.phase === 'idea' ? h(Button, { disabled: busy || !!project.pending, onClick: () => { change({ deliverable: 'outline' }); submitTask('outline', '基于当前思路扩展为大纲，保持人物、冲突和结尾方向。', 0, { ...project, draft: output, deliverable: 'outline' }); } }, '扩成大纲') : null,
               (chosen.phase === 'idea' || chosen.phase === 'outline') ? h(Button, { disabled: busy || !!project.pending, onClick: () => { change({ deliverable: 'script' }); submitTask('full', '基于当前版本扩写为完整剧本，保持已确定的人物、事实和结尾。', 0, { ...project, draft: output, deliverable: 'script' }); } }, '扩成剧本') : null,
@@ -1054,7 +1059,7 @@ const HUMANIZE_PATTERNS = [
               h('label', null, '只返修范围 ', h('select', { value: reviseSegment, style: { ...input, width: 'auto', minWidth: 180, marginBottom: 0 }, onChange: (e) => setReviseSegment(e.target.value) },
                 h('option', { value: '' }, '全文（不限定）'), ...segmentOptions.map((item) => h('option', { key: item.value, value: item.value }, item.label)))),
               h(Button, { disabled: busy || !!project.pending || !reviseSegment, onClick: () => submitTask('revision', '只返修' + (reviseSegment.startsWith('段') ? '第' + reviseSegment.slice(1) + '段话轮' : '第' + reviseSegment.slice(1) + '场') + '，其余部分保持原样。' + (revision ? '\n本次要求：' + revision : '')) }, '只返修所选部分')) : null,
-            h('div', { style: { ...row, marginTop: 10 } }, h(Button, { primary: true, disabled: busy || !!project.pending, onClick: () => submitTask('revision', revision) }, '按要求返修'), h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask('audit', '检查角色动机、因果、对白、情绪兑现和证据边界；指出具体位置和依据。') }, 'AI 审稿')),
+            h('div', { style: { ...row, marginTop: 10 } }, h(Button, { primary: true, disabled: busy || !!project.pending || !revision.trim(), onClick: () => submitTask(revisePhase, revision) }, revisePhase === 'revision' ? '按要求返修' : '按要求优化'), h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask('audit', '检查角色动机、因果、对白、情绪兑现和证据边界；指出具体位置和依据。') }, 'AI 审稿')),
             h('div', { style: { marginTop: 16 } },
               editing ? h('div', null,
                 h(Field, { label: '可编辑稿', value: project.editBuffers?.[chosen.id] ?? output, rows: 12, onChange: (text) => change({ editBuffers: { ...project.editBuffers, [chosen.id]: text } }) }),

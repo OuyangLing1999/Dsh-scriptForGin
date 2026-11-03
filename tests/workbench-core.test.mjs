@@ -94,6 +94,15 @@ test('idea and outline phases skip full-script protocol while full keeps it', ()
   assert.doesNotMatch(outline, /至少200个汉字/);
   assert.match(buildPrompt({ mode: 'live', phase: 'full', project }), /至少200个汉字/);
 });
+test('optimize idea and outline phases are structure-only and skip protocol', () => {
+  const project = createProject({ topic: '回家' });
+  const ideaOpt = buildPrompt({ mode: 'live', phase: 'idea-opt', project });
+  assert.match(ideaOpt, /只优化思路/);
+  assert.doesNotMatch(ideaOpt, /至少200个汉字/);
+  const outlineOpt = buildPrompt({ mode: 'live', phase: 'outline-opt', project });
+  assert.match(outlineOpt, /只优化大纲/);
+  assert.doesNotMatch(outlineOpt, /至少200个汉字/);
+});
 test('deliverable value is validated', () => {
   assert.equal(validateProject(createProject({ deliverable: 'idea' })).ok, true);
   assert.equal(validateProject(createProject({ deliverable: 'outline' })).ok, true);
