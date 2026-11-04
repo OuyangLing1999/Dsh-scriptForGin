@@ -24,7 +24,8 @@ if (!executablePath) throw Error('Set BROWSER_BIN to installed Chromium');
 await mkdir(output, { recursive: true });
 const fixtureBoot = `
 const modules=globalThis.__FIXTURE_MODULES__, React=modules.react, ReactDOM=modules['react-dom/client'];
-let main; let sessionCounter=0; const bindings=new Map();
+let main,sessionShortcut; let sessionCounter=0; const bindings=new Map();
+globalThis.__FIXTURE_PANEL_CALLS__=[];
 globalThis.__FIXTURE_HELD__=[]; globalThis.__FIXTURE_HOLD__=false;
 const replies={idea:'FIXTURE_IDEA: mother and son', 'idea-opt':'FIXTURE_IDEA_OPT: reconciled direction', outline:'FIXTURE_OUTLINE: opening, conflict, resolution', 'outline-opt':'FIXTURE_OUTLINE_OPT: revised structure', audit:'FIXTURE_AUDIT: check motivation and preserve facts'};
 const script='【主播】\\n'+'张姐，您刚才说，儿子打电话来问您过年想要什么，您说什么都不要，可挂了电话又一个人坐在饭桌边难受。我听着，您惦记的其实也不是礼物，就是想跟孩子踏踏实实吃顿饭。咱们当父母的总怕给孩子添麻烦，嘴上越说不用回来，心里越盼着门口有脚步声。可孩子隔着电话看不见咱们的表情，有时候真就把那句没事当了真。您看，您都把他爱吃的饺子馅记得清清楚楚，他未必知道冰箱里已经给他留好了一份。今天咱先不急着说谁对谁错，就把心里那句话讲明白：妈知道你忙，可妈也想你。您愿不愿意跟我们说说，上次他回家，您最舍不得的是哪一刻？'+'张姐，您说呢？\\n【张姐】\\n'+'主播，您这话说到我心里了。上次他走的时候，我端着一碗刚盛好的面，问他吃两口再走行不行，他说车快到了。我就跟着他走到楼下，看见他坐上车，还装得挺高兴，叫他路上别着急。回来以后，那碗面都坨了，我也舍不得倒。其实他每个月都给我打电话，家里的灯坏了，也马上给我叫人来修，我知道孩子不是不管我。就是屋里一安静，我总想起他小时候，一进门先喊一声妈。刚才听您这么一说，我也明白了，不能总让孩子猜。我准备今晚给他打个电话，说清楚我想他，有空回来吃顿饭，忙的时候多说几句话也行。我也得把自己的日子过好，明天约楼下的老姐妹一起散步，不能光守着电话等。主播，您再给我讲讲，这个电话怎么开头，才不让孩子一听就觉得我在埋怨他？';
@@ -36,11 +37,11 @@ const session={projections:{faceOf:()=>({getSnapshot:()=>state,subscribe:(fn)=>{
  const finish=()=>{state={taskId,phase,text:replies[phase]||script,done:true,error:'',seq:10,turn:1};for(const fn of listeners)fn()};if(globalThis.__FIXTURE_HOLD__)globalThis.__FIXTURE_HELD__.push(finish);else setTimeout(finish,80); return {ok:true};
 }};
 bindings.set(id,{session});}const binding=bindings.get(id);return {ready:Promise.resolve(binding),binding,release(){}};}
-const ctx={slots:{inject:(_name,fn)=>fn(),register:(spec,view)=>{if(spec.name==='main')main=view;return()=>{}}},
+const ctx={slots:{inject:(_name,fn)=>fn(),register:(spec,view)=>{if(spec.name==='main')main=view;if(spec.name==='conversation.session.header.utilities')sessionShortcut=view;return()=>{}}},
  sessions:{list:{getSnapshot:()=>({ids:[],byId:{}}),subscribe:()=>()=>{}},refresh:async()=>{},create:async()=> 'fixture-session-'+(++sessionCounter),retain:ref,using:async(id,_opts,fn)=>fn(ref(id))},
- uiWorkspace:{openSession(){}},fileUpload:{upload:async()=>({ok:true,value:{receiptId:'fixture'}})},remote:{}};
+ layout:{selectPanel:id=>globalThis.__FIXTURE_PANEL_CALLS__.push(id)},uiWorkspace:{openSession(){}},fileUpload:{upload:async()=>({ok:true,value:{receiptId:'fixture'}})},remote:{}};
 globalThis.__FIXTURE_REQUESTS__=[];
-globalThis.__ModuleLoader__={load:({factory})=>{const plugin=factory(name=>{if(!(name in modules))throw Error('Unknown module '+name);return modules[name]});plugin.apply(ctx);ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(main));}};
+globalThis.__ModuleLoader__={load:({factory})=>{const plugin=factory(name=>{if(!(name in modules))throw Error('Unknown module '+name);return modules[name]});plugin.apply(ctx);const shortcutMount=document.createElement('div');shortcutMount.id='shortcut-fixture';document.body.append(shortcutMount);globalThis.__FIXTURE_SHORTCUT_ROOT__=ReactDOM.createRoot(shortcutMount);globalThis.__FIXTURE_SHORTCUT_ROOT__.render(React.createElement(sessionShortcut));ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(main));}};
 await new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='/client.js';script.onload=resolve;script.onerror=reject;document.head.append(script)});
 `;
 const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
@@ -62,8 +63,23 @@ try{
  await page.route('https://api.github.com/**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({tag_name:'v0.0.1',assets:[],body:''})}));
  await page.goto('http://127.0.0.1:'+server.address().port,{waitUntil:'networkidle'});
  await page.getByRole('heading',{name:'剧本工作台',exact:true}).waitFor();
+ await page.waitForFunction(()=>!!localStorage.getItem('dsh-script.projects.v2'));
+ const beforeShortcut=await page.evaluate(()=>localStorage.getItem('dsh-script.projects.v2'));
+ await page.getByRole('button',{name:'打开剧本工作台',exact:true}).click();
+ assert.deepEqual(await page.evaluate(()=>globalThis.__FIXTURE_PANEL_CALLS__),['elderly-script']);
+ assert.equal(await page.evaluate(()=>globalThis.__FIXTURE_REQUESTS__.length),0);
+ assert.equal(await page.evaluate(()=>localStorage.getItem('dsh-script.projects.v2')),beforeShortcut);
+ report.checks.push('session header shortcut selects registered workbench panel without submitting or changing projects');
+ await page.getByRole('button',{name:'返回会话',exact:true}).click();
+ assert.deepEqual(await page.evaluate(()=>globalThis.__FIXTURE_PANEL_CALLS__),['elderly-script',null]);
+ report.checks.push('return to conversation clears panel selection and retains project state');
+ await page.evaluate(()=>{globalThis.__FIXTURE_SHORTCUT_ROOT__.unmount();document.getElementById('shortcut-fixture').remove()});
  const click=async(name)=>{const b=page.getByRole('button',{name,exact:typeof name==='string'}).first();await b.click()};
  const optional=async(name)=>{const b=page.getByRole('button',{name,exact:typeof name==='string'}).first();if(await b.isVisible().catch(()=>false))await b.click()};
+ const detailsFor=label=>page.locator('details').filter({has:page.locator('summary').filter({hasText:label})}).first();
+ const openDetails=async(label)=>{const details=detailsFor(label);if(!(await details.evaluate(element=>element.open)))await details.locator('summary').first().click();return details;};
+ const primaryCount=async(scope)=>scope.locator('button[data-primary="true"]').evaluateAll(nodes=>nodes.filter(node=>node.getClientRects().length).length);
+ const assertPrimaryAreas=async()=>{const documentArea=page.locator('.script-result-grid > section').first(),instructionArea=page.locator('.script-inspector > section').first();assert.ok(await primaryCount(documentArea)<=1,'Document area has duplicate primary actions');assert.equal(await primaryCount(instructionArea),1,'Instruction area should have one primary action');};
  const catalog=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('dsh-script.projects.v2')));
  const projectOf=c=>c.projects.find(p=>p.id===c.activeId)||c.projects[0];
  const waitPhase=async(phase)=>page.waitForFunction(phase=>{const c=JSON.parse(localStorage.getItem('dsh-script.projects.v2')||'null');const p=c&&(c.projects.find(p=>p.id===c.activeId)||c.projects[0]);return p&&!p.pending&&p.versions.some(v=>v.phase===phase)},phase,{timeout:15000});
@@ -84,6 +100,10 @@ try{
  report.checks.push('onboarding dismissal persists and settings can reopen it');
  await click('新建项目');
  await page.getByLabel('选题 / 本集任务',{exact:true}).waitFor();
+ for(const label of ['素材收件箱','创作约束']){const details=detailsFor(label);assert.equal(await details.evaluate(element=>element.open),false);assert.equal(await details.locator('summary').first().isVisible(),true);}
+ report.checks.push('materials inbox and creative constraints are discoverable collapsed details by default');
+ for(const label of ['项目保存状态','AI任务状态'])assert.equal(await page.getByRole('status',{name:label,exact:true}).count(),1);
+ report.checks.push('project saving and AI task status have distinct labeled live regions');
  assert.equal(await page.getByLabel('选题 / 本集任务',{exact:true}).inputValue(),'');
  await click('填入示例选题');assert.ok((await page.getByLabel('选题 / 本集任务',{exact:true}).inputValue()).trim());
  report.checks.push('empty creative brief can populate an example topic');
@@ -107,6 +127,8 @@ try{
  assert.equal(await page.getByRole('button',{name:'旅行见闻',exact:true}).getAttribute('aria-pressed'),'true');
  assert.equal(await page.getByRole('button',{name:'幽默',exact:true}).getAttribute('aria-pressed'),'true');
  report.checks.push('custom theme/style tags add on Enter, deduplicate, remove, and presets select');
+ for(const label of ['题材标签','风格标签'])assert.equal((await page.getByRole('button',{name:'添加'+label,exact:true}).innerText()).trim(),'添加');
+ report.checks.push('tag add buttons use short visible label with distinct accessible names');
  await page.getByText('我的常用题材标签（当前浏览器）',{exact:true}).click();await click('将已选题材标签存为常用');
  await page.getByText('我的常用风格标签（当前浏览器）',{exact:true}).click();await click('将已选风格标签存为常用');
  await click('新建项目');
@@ -139,26 +161,36 @@ try{
  const changedProfile={audience:'城市退休人群',themeTags:['退休生活'],styleTags:['克制']};
  await click('创作简报');await setProfile(changedProfile);await click('稿件工作区');
  await page.getByLabel('浏览稿件版本',{exact:true}).selectOption(firstIdea.id);
+ const operationTarget=page.getByLabel('本次操作对象',{exact:true});
+ const sourceFeedback=await operationTarget.innerText();assert.match(sourceFeedback,/v1/);for(const text of [chainProfile.audience,'旅行见闻','幽默'])assert.ok(sourceFeedback.includes(text));
  await page.getByLabel(/^修改意图/).fill('保留人物和结尾，调整表达');
  await click('优化思路');await waitPhase('idea-opt');
  assert.deepEqual(await requestProfile(),chainProfile);assert.deepEqual(projectOf(await catalog()).versions.at(-1).creativeProfile,chainProfile);
  report.checks.push('historical source keeps its creative profile after project profile changes');
  await page.getByLabel('本次改用当前项目创作定位',{exact:true}).check();
+ const overrideFeedback=await operationTarget.innerText();for(const text of [changedProfile.audience,'退休生活','克制'])assert.ok(overrideFeedback.includes(text));
+ report.checks.push('operation target shows selected version and visibly switches effective source/project profile');
  await page.getByLabel(/^修改意图/).fill('本次明确采用项目的新定位');
  await click('优化思路');await waitLatestTask();
  assert.deepEqual(await requestProfile(),changedProfile);assert.deepEqual(projectOf(await catalog()).versions.at(-1).creativeProfile,changedProfile);
  report.checks.push('explicit inspector override uses current project profile and archives that snapshot');
  await page.getByLabel('浏览稿件版本',{exact:true}).selectOption(firstIdea.id);
  await page.getByLabel('本次改用当前项目创作定位',{exact:true}).uncheck();
- assert.ok(await page.getByRole('button',{name:'扩成大纲',exact:true}).count()>=1);
+ assert.equal(await page.getByRole('button',{name:'扩成大纲',exact:true}).count(),1);
  await click('文字润色');await waitPhase('polish');
  assert.equal(projectOf(await catalog()).versions.at(-1).artifactKind,'idea');
- assert.ok(await page.getByRole('button',{name:'扩成大纲',exact:true}).count()>=1);
+ assert.equal(await page.getByRole('button',{name:'扩成大纲',exact:true}).count(),1);
  report.checks.push('polished idea retains idea kind and outline expansion');
  await click('扩成大纲');await waitPhase('outline');
  await page.getByLabel(/^修改意图/).fill('保留事实，调整大纲节奏');
  await click('优化大纲');await waitPhase('outline-opt');
  await click('扩成剧本');await waitPhase('full');
+ assert.equal(await page.getByRole('button',{name:'导出 Word',exact:true}).count(),1);
+ await assertPrimaryAreas();
+ report.checks.push('document/instruction areas have single primary actions and Word export appears once');
+ const checksArea=page.locator('section').filter({has:page.getByRole('heading',{name:'程序检查',exact:true})}).last();
+ assert.ok((await checksArea.innerText()).includes('通过'));
+ report.checks.push('valid script program check shows passed without empty issue groups');
  assert.ok(await page.locator('span[title^="候选稿："]').count());
  await page.getByRole('heading',{name:'角色台词统计',exact:true}).waitFor();
  const roles=await page.locator('.script-roles li').allTextContents();
@@ -190,12 +222,15 @@ try{
  assert.deepEqual(after.versions,before.versions,'Audit must not enter body versions');
  report.checks.push('audit stored separately; adopted body unchanged');
  assert.ok(await page.locator('span[title^="已采用稿："]').count());
+ assert.notEqual(await page.getByRole('button',{name:'按最新意见返修',exact:true}).getAttribute('data-primary'),'true');
  await page.getByLabel(/^修改意图/).fill('');await click('按最新意见返修');
  const reviewIntent=await page.getByLabel(/^修改意图/).inputValue();assert.ok(reviewIntent.trim());assert.ok(reviewIntent.includes('FIXTURE_AUDIT'));
  report.checks.push('latest audit opinion populates revision intent without submitting automatically');
  await click(/^审稿记录/);
  const reportTitles=await page.locator('details[title]').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('title')));
  assert.ok(reportTitles.some(title=>title.includes('来源版本')));
+ assert.ok(!(await page.locator('details[title]').allTextContents()).some(text=>text.includes('来源 v0')));
+ assert.ok((await page.locator('details[title]').allTextContents()).some(text=>text.includes('FIXTURE_AUDIT')));
  report.checks.push('adopted/candidate badges and audit details expose explanatory title attributes');
  await click('稿件工作区');
  await page.getByRole('heading',{name:'角色台词统计',exact:true}).scrollIntoViewIfNeeded();
@@ -224,6 +259,7 @@ try{
  await click('创作简报');
  await page.getByLabel(/^原稿 \/ 母版/).fill('ORIGINAL_DRAFT');
  const uploads=[{name:'first.txt',mimeType:'text/plain',buffer:Buffer.from('MATERIAL_ONE')},{name:'second.md',mimeType:'text/markdown',buffer:Buffer.from('MATERIAL_TWO')}];
+ await openDetails('素材收件箱');
  await page.getByLabel('导入创作素材',{exact:true}).setInputFiles(uploads);
  await page.getByRole('heading',{name:'素材导入预览',exact:true}).waitFor();
  await page.getByLabel(/^载入方式/).selectOption('materials');await click('确认导入');
@@ -243,6 +279,9 @@ try{
   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   const dimensions=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,client:innerWidth}));
   assert.ok(dimensions.scroll<=dimensions.client+1,'Horizontal overflow at '+width+': '+JSON.stringify(dimensions));
+  await click('专注阅读');assert.equal(await page.locator('.script-inspector').isVisible(),false);assert.equal(await page.locator('.script-document').isVisible(),true);assert.equal(await page.getByRole('button',{name:'导出 Word',exact:true}).isVisible(),true);assert.equal(await page.getByLabel('搜索稿件',{exact:true}).isVisible(),true);
+  await click('退出专注');assert.equal(await page.locator('.script-inspector').isVisible(),true);
+  report.checks.push('reading mode retains document tools and exits at '+width+' with large font');
   const screenshot='fixture-'+width+'.png';await page.screenshot({path:path.join(output,screenshot),fullPage:true});
   report.screenshots.push(screenshot);report.checks.push('no document horizontal overflow at '+width);
  }
@@ -250,17 +289,22 @@ try{
  await click('创作简报');
  await page.getByLabel('项目名称',{exact:true}).fill('春节连麦 · 把想念说清楚');
  await page.getByLabel(/^原稿 \/ 母版/).fill(readableDraft);
+ await openDetails('创作约束');
  await page.getByLabel(/^人物关系/).fill('张姐和异地工作的儿子；主播负责倾听和引导。');
  await page.getByLabel(/^核心问题/).fill('母亲怕添麻烦，总说不用回来，儿子未听出她的想念。');
  await page.getByLabel(/^表达目标/).fill('母亲想要陪伴，儿子想让母亲放心；主播帮助双方把话说开。');
  await page.getByLabel(/^收束/).fill('用一次平和通话表达想念，保留日常生活的温度。');
  await page.getByRole('heading',{name:'剧本工作台',exact:true}).click();
- await page.waitForFunction(()=>document.querySelector('.script-save')?.textContent.includes('自动保存'));
+ await page.waitForFunction(()=>document.querySelector('[aria-label="项目保存状态"]')?.textContent.includes('自动保存'));
  await page.evaluate(()=>{for(const element of document.querySelectorAll('textarea'))element.scrollTop=0;document.querySelector('#root > div')?.scrollTo(0,0)});
  await page.screenshot({path:path.join(output,'fixture-1440-brief.png'),fullPage:true});report.screenshots.push('fixture-1440-brief.png');
  await click('稿件工作区');
  await page.evaluate(()=>{const theme={'--dsw-alias-bg-base':'#101722','--dsw-alias-bg-layer-1':'#172130','--dsw-alias-bg-layer-2':'#202d3f','--dsw-alias-border-l2':'#36475f','--dsw-alias-brand-primary':'#9ab7ff','--dsw-alias-label-primary':'#e8edf7','--dsw-alias-label-secondary':'#b3c0d3','--dsw-alias-state-error-primary':'#ffb4ab','--dsw-alias-state-success-primary':'#8bd5ac'};for(const [key,value]of Object.entries(theme))document.documentElement.style.setProperty(key,value);document.body.style.background='var(--dsw-alias-bg-base)';document.querySelector('#root > div')?.scrollTo(0,0);});
  await page.screenshot({path:path.join(output,'fixture-1440-dark.png'),fullPage:true});report.screenshots.push('fixture-1440-dark.png');
+ await click('专注阅读');assert.equal(await page.locator('.script-inspector').isVisible(),false);assert.equal(await page.getByRole('button',{name:'导出 Word',exact:true}).isVisible(),true);
+ await page.screenshot({path:path.join(output,'fixture-1440-dark-reading.png'),fullPage:true});report.screenshots.push('fixture-1440-dark-reading.png');
+ await click('退出专注');assert.equal(await page.locator('.script-inspector').isVisible(),true);
+ report.checks.push('dark large-font reading mode retains tools and exits correctly');
  await page.evaluate(()=>{document.documentElement.removeAttribute('style');document.body.style.background='';});
  const foregroundBefore=projectOf(await catalog());
  await click('创作简报');
@@ -268,6 +312,10 @@ try{
  await page.evaluate(()=>{globalThis.__FIXTURE_HOLD__=true});
  await click('生成思路');
  await page.waitForFunction(()=>globalThis.__FIXTURE_HELD__.length===1);
+ assert.equal(await page.getByRole('status',{name:'项目保存状态',exact:true}).count(),1);assert.equal(await page.getByRole('status',{name:'AI任务状态',exact:true}).count(),1);
+ const taskStatusText=await page.getByRole('status',{name:'AI任务状态',exact:true}).innerText();assert.match(taskStatusText,/任务|运行|idea|思路/);
+ const saveStatusText=await page.getByRole('status',{name:'项目保存状态',exact:true}).innerText();assert.ok(!saveStatusText.includes('任务运行'));
+ report.checks.push('running AI task and project save state remain independently announced');
  const backgroundTask=await page.evaluate(()=>globalThis.__FIXTURE_REQUESTS__.at(-1).taskId);
  await click('新建项目');
  await page.waitForFunction(ownerId=>{const c=JSON.parse(localStorage.getItem('dsh-script.projects.v2'));return c.activeId&&c.activeId!==ownerId},foregroundBefore.id);

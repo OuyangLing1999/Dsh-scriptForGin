@@ -111,7 +111,7 @@ window.__ModuleLoader__.load({
         color: primary ? "var(--dsw-alias-bg-base)" : T.text,
         cursor: disabled ? "wait" : "pointer",
         opacity: disabled ? 0.55 : 1
-      }, ...props }, children);
+      }, "data-primary": primary ? "true" : void 0, ...props }, children);
     }
     function Field({ label, value = "", onChange, rows, placeholder, ...props }) {
       return h(
@@ -137,40 +137,51 @@ window.__ModuleLoader__.load({
         placeholder: "例如：50岁以上中老年人，城市退休人群"
       });
     }
-    function TagEditor({ label, field, tags, presets, favorites, onChange, onSave, onForget, onNotice }) {
+    function TagEditor({ label, field, tags, presets, favorites, onChange, onSave, onForget }) {
       const [draft, setDraft] = useState("");
+      const [feedback, setFeedback] = useState("");
       const add = (value) => {
         const raw = value.split(/[,，、;；\n]+/).map((item) => item.trim()).filter(Boolean);
-        if (raw.some((tag) => tag.length > 40) || WB.normalizeTags([...tags, ...raw]).length < new Set([...tags, ...raw].map((tag) => tag.toLowerCase())).size) {
-          onNotice("每组最多12个标签，每个标签最多40字；超出部分未添加。");
-        }
-        onChange(WB.normalizeTags([...tags, ...raw.filter((tag) => tag.length <= 40)]));
-        setDraft("");
+        if (!raw.length) return;
+        const next = WB.normalizeTags([...tags, ...raw.filter((tag) => tag.length <= 40)]);
+        const overflow = raw.some((tag) => tag.length > 40) || new Set([...tags, ...raw].map((tag) => tag.toLowerCase())).size > 12;
+        const changed = next.length !== tags.length;
+        setFeedback(overflow ? "每组最多12个标签，每个标签最多40字；超出部分未添加。" : changed ? "已添加 " + (next.length - tags.length) + " 个标签" : "该标签已选择，无需重复添加。");
+        if (changed) onChange(next);
+        if (!overflow) setDraft("");
+      };
+      const remove = (tag) => {
+        onChange(tags.filter((item) => item !== tag));
+        setFeedback("已移除：" + tag);
       };
       return h(
         "section",
         { className: "script-tag-editor", "aria-label": label },
-        h("strong", null, label),
+        h("div", { className: "script-section-heading" }, h("strong", null, label), h("small", { className: "script-muted" }, tags.length + " / 12")),
         h(
           "div",
           { className: "script-tag-list" },
-          ...tags.map((tag) => h(Button, { key: tag, className: "script-tag-selected", "aria-label": "移除" + label + "：" + tag, onClick: () => onChange(tags.filter((item) => item !== tag)) }, tag + " ×")),
-          !tags.length ? h("span", { className: "script-muted" }, "可留空，按本次选题创作") : null
+          ...tags.map((tag) => h("span", { key: tag, className: "script-tag-selected" }, h("span", null, tag), h(Button, { className: "script-tag-remove", "aria-label": "移除" + label + "：" + tag, title: "移除此标签", onClick: () => remove(tag) }, "×"))),
+          !tags.length ? h("span", { className: "script-muted" }, "未设标签，按选题创作") : null
         ),
-        h("div", { className: "script-tag-add" }, h("input", { "aria-label": "自定义" + label, value: draft, maxLength: 300, placeholder: "输入标签，回车添加", onChange: (event) => setDraft(event.target.value), onKeyDown: (event) => {
+        h("div", { className: "script-tag-add" }, h("input", { "aria-label": "自定义" + label, "aria-describedby": field + "-feedback", value: draft, maxLength: 300, placeholder: "输入标签，回车添加", onChange: (event) => {
+          setDraft(event.target.value);
+          setFeedback("");
+        }, onKeyDown: (event) => {
           if (event.key === "Enter" && !event.nativeEvent?.isComposing) {
             event.preventDefault();
             add(draft);
           }
-        } }), h(Button, { disabled: !draft.trim(), onClick: () => add(draft) }, "添加" + label)),
-        h("div", { className: "script-tag-list" }, h("small", null, "推荐："), ...presets.map((tag) => h(Button, { key: tag, "aria-pressed": tags.includes(tag), onClick: () => tags.includes(tag) ? onChange(tags.filter((item) => item !== tag)) : add(tag) }, tag))),
+        } }), h(Button, { "aria-label": "添加" + label, disabled: !draft.trim(), onClick: () => add(draft) }, "添加")),
+        feedback ? h("small", { id: field + "-feedback", className: "script-tag-feedback", role: "status" }, feedback) : null,
+        h("div", { className: "script-tag-list script-tag-recommendations" }, h("small", null, "推荐"), ...presets.map((tag) => h(Button, { key: tag, "aria-pressed": tags.includes(tag), onClick: () => tags.includes(tag) ? remove(tag) : add(tag) }, tag))),
         h(
           "details",
           { className: "script-tag-favorites" },
           h("summary", null, "我的常用" + label + "（当前浏览器）"),
           h(Button, { disabled: !tags.length, onClick: () => onSave(field, tags) }, "将已选" + label + "存为常用"),
-          !favorites.length ? h("p", { className: "script-muted" }, "保存后可在其他项目中点选复用。") : null,
-          h("div", { className: "script-tag-list" }, ...favorites.map((tag) => h("span", { key: tag, className: "script-tag-favorite" }, h(Button, { onClick: () => add(tag) }, tag), h(Button, { "aria-label": "删除常用" + label + "：" + tag, onClick: () => onForget(field, tag) }, "×"))))
+          !favorites.length ? h("p", { className: "script-muted" }, "保存后可跨项目点选。") : null,
+          h("div", { className: "script-tag-list" }, ...favorites.map((tag) => h("span", { key: tag, className: "script-tag-favorite" }, h(Button, { onClick: () => add(tag) }, tag), h(Button, { className: "script-tag-remove", "aria-label": "删除常用" + label + "：" + tag, onClick: () => onForget(field, tag) }, "×"))))
         )
       );
     }
@@ -260,11 +271,11 @@ window.__ModuleLoader__.load({
           "section",
           { style: card, className: "script-creative-profile" },
           h("h2", null, "创作定位"),
-          h("p", { className: "script-muted" }, "受众、题材与风格分别设置。标签指导创作，本次选题和明确修改要求优先。"),
+          h("p", { className: "script-profile-summary script-muted" }, "项目默认定位 · 本次明确要求优先"),
           h(AudienceEditor, { key: project.id, value: profile.audience, onChange: (audience) => changeProfile({ audience }) }),
-          h("p", { className: "script-muted" }, "内容形式：" + (project.mode.startsWith("live") ? "直播连麦 · 角色对白与话轮交接" : "短视频拍摄稿 · 场次、镜头与时长") + "。工作模式决定操作，题材标签决定写什么。"),
+          h("p", { className: "script-profile-summary script-muted" }, "交付形式：" + (project.mode.startsWith("live") ? "直播连麦" : "短视频拍摄稿")),
           ...[["themeTags", "题材标签", topicPresets], ["styleTags", "风格标签", stylePresets]].map(([field, label, presets]) => h(TagEditor, { key: project.id + field, field, label, presets, tags: profile[field], favorites: favoriteTags[field], onChange: (tags) => changeProfile({ [field]: tags }), onSave: saveFavoriteTags, onForget: (key, tag) => saveFavoriteTags(key, tag, true), onNotice: setNotice })),
-          h("small", { className: "script-muted" }, "每组最多12个标签，每个最多40字。样稿库标签只用于筛选参考，与这里分别保存。")
+          h("small", { className: "script-muted" }, "每组最多12个，每个40字；可留空。")
         );
       }
       function changeBrief(key, value) {
@@ -665,7 +676,7 @@ window.__ModuleLoader__.load({
             null,
             h(
               "section",
-              { style: card },
+              { style: card, className: "script-brief-main" },
               h("div", { className: "script-section-heading" }, h("h2", null, "创作简报"), h("span", { className: "script-badge" }, "编导主导 · AI 辅助")),
               h(
                 "div",
@@ -679,7 +690,7 @@ window.__ModuleLoader__.load({
               h(Field, { label: "选题 / 本集任务", value: project.topic, onChange: (topic) => {
                 change({ topic });
                 setFieldErrors((old) => ({ ...old, topic: "" }));
-              }, placeholder: "选题、核心矛盾或本次编导意图" }),
+              }, placeholder: "这一稿要讲什么，或要解决什么问题" }),
               err("topic"),
               h("div", { style: { margin: "-2px 0 10px" } }, h(Button, { onClick: () => {
                 const themes = WB.resolveCreativeProfile(project).themeTags.join("、");
@@ -693,15 +704,15 @@ window.__ModuleLoader__.load({
               err("draft"),
               project.mode === "duan-ba" ? h("div", null, h(Field, { label: "视频路径（DSH 所在电脑）", value: project.videoPath, onChange: (videoPath) => change({ videoPath }) }), h(Field, { label: "字幕 / 时间轴证据", value: project.videoEvidence, rows: 5, onChange: (videoEvidence) => change({ videoEvidence }), placeholder: "时间段、画面 / 音轨依据、待复核事实" }), err("video")) : null,
               h(Field, { label: "本次指令 / 调整方向", value: project.notes, rows: 4, onChange: (notes) => change({ notes }), placeholder: "例如：保留结尾，只调整前半段冲突升级；对白更克制。" }),
-              h("div", { className: "script-actionbar" }, h(Button, { primary: true, disabled: busy || !!project.pending, onClick: () => submitTask(phase) }, "生成" + { idea: "思路", outline: "大纲", script: "剧本" }[project.deliverable]), h("span", { className: "script-muted" }, "按当前简报执行，结果保留为新版本"))
+              h("div", { className: "script-actionbar script-brief-submit" }, h(Button, { primary: true, disabled: busy || !!project.pending, onClick: () => submitTask(phase) }, "生成" + { idea: "思路", outline: "大纲", script: "剧本" }[project.deliverable]), h("span", { className: "script-muted" }, "按当前简报执行，结果保留为新版本"))
             ),
             h(
-              "section",
-              { style: card, onDragOver: (e) => e.preventDefault(), onDrop: (e) => {
+              "details",
+              { className: "script-brief-secondary", style: card, onDragOver: (e) => e.preventDefault(), onDrop: (e) => {
                 e.preventDefault();
                 void importFiles(e.dataTransfer.files);
               } },
-              h("h2", null, "素材收件箱"),
+              h("summary", null, "素材收件箱", h("small", { className: "script-muted" }, " · 导入文字、视频或音频")),
               h("p", { className: "script-muted" }, "文字先预览，再选择载入方式；视频和音频提交时上传。"),
               h("input", { "aria-label": "导入创作素材", type: "file", multiple: true, accept: ".txt,.md,.docx,.srt,.vtt,.mp4,.mov,.mkv,.webm,.wav,.mp3", onChange: (e) => {
                 void importFiles(e.target.files);
@@ -716,9 +727,10 @@ window.__ModuleLoader__.load({
             null,
             creativeProfileView(),
             h(
-              "section",
-              { style: card },
-              h("h2", null, "创作约束"),
+              "details",
+              { style: card, className: "script-constraint-details" },
+              h("summary", null, "创作约束"),
+              h("p", { className: "script-muted" }, "选填；已填内容始终参与生成和返修。"),
               ...[["relationship", "人物关系 / 参与者"], ["conflict", "核心问题 / 冲突"], ["goals", "表达目标 / 角色诉求"], ["ending", "收束 / 结尾方向"], ["lockedFacts", "锁定事实 / 情节"], ["protectedLines", "保护台词（逐字保留）"]].map(([key, label]) => h(Field, { key, label, rows: ["lockedFacts", "protectedLines"].includes(key) ? 3 : 2, value: project.brief[key], onChange: (value) => changeBrief(key, value) })),
               h("label", null, "优化力度", h("select", { style: input, value: project.intensity, onChange: (e) => change({ intensity: e.target.value }) }, h("option", { value: "light" }, "轻修 · 保留顺序与情节"), h("option", { value: "structure" }, "结构调整 · 保留核心因果"), h("option", { value: "deep" }, "重构 · 保留锁定项"))),
               h("label", { style: { display: "block", marginTop: 8 } }, h("input", { type: "checkbox", checked: project.autoRepair, onChange: (e) => change({ autoRepair: e.target.checked }) }), " 格式问题自动返修一次（额外调用 AI）")
@@ -853,6 +865,11 @@ window.__ModuleLoader__.load({
         const pendingText = project.pending && live?.taskId === project.pending.taskId ? live.text : "";
         const searchMatches = searchQuery.trim() ? AN.findMatches(output, searchQuery.trim()) : { matches: [], count: 0 };
         const roleStats = kind === "script" && output ? AN.analyzeRoles(output, mode) : null;
+        const viewedIndex = chosen ? project.versions.findIndex((v) => v.id === chosen.id) + 1 : 0;
+        const parentIndex = chosen?.sourceVersionId ? project.versions.findIndex((v) => v.id === chosen.sourceVersionId) + 1 : 0;
+        const effectiveProfile = WB.resolveCreativeProfile(chosen && !useProjectProfile ? chosen : project);
+        const checkGroups = AN.groupCheckIssues(check.issues);
+        const visibleIssueCount = checkGroups.reduce((sum, group) => sum + group.issues.length, 0);
         const renderHighlighted = (text) => {
           if (!searchMatches.matches.length || !text) return text;
           const nodes = [];
@@ -872,7 +889,6 @@ window.__ModuleLoader__.load({
             "section",
             { style: card },
             h("div", { className: "script-section-heading" }, h("h2", null, "稿件工作区"), h(Button, { onClick: () => setReading(!reading) }, reading ? "退出专注" : "专注阅读")),
-            output ? h("div", { className: "script-next-step" }, h("span", null, kind === "idea" ? "下一步：优化思路，或扩成大纲" : kind === "outline" ? "下一步：确认大纲，或扩成剧本" : "下一步：定向返修、AI 审稿或导出 Word"), kind === "idea" ? h(Button, { primary: true, disabled: busy || !!project.pending, onClick: () => submitTask("outline", "基于此思路生成结构大纲。", 0, { ...project, draft: output, sourceVersion: chosen, deliverable: "outline" }) }, "扩成大纲") : kind === "outline" ? h(Button, { primary: true, disabled: busy || !!project.pending, onClick: () => submitTask("full", "基于当前稿件扩写完整剧本，保留已确定事实与结尾。", 0, { ...project, draft: output, sourceVersion: chosen, deliverable: "script" }) }, "扩成剧本") : h(Button, { primary: true, onClick: () => download(project.title + ".docx", IO.buildDocxBytes(output), "application/vnd.openxmlformats-officedocument.wordprocessingml.document") }, "导出 Word")) : null,
             output ? h("div", { className: "script-search" }, h("input", { "aria-label": "搜索稿件", type: "search", style: input, value: searchQuery, placeholder: "在稿件中搜索…", onChange: (e) => {
               setSearchQuery(e.target.value);
               setSearchIndex(0);
@@ -884,7 +900,7 @@ window.__ModuleLoader__.load({
               "div",
               { style: row },
               h("span", { className: "script-badge" }, { idea: "思路", outline: "大纲", script: "剧本" }[kind]),
-              chosen ? h("span", { className: "script-muted", title: chosen.id === project.currentVersionId ? "已采用稿：返修、对照以它为准，新生成结果不会覆盖它。" : "候选稿：刚生成或修改的新版本，采用后设为默认工作稿。" }, chosen.id === project.currentVersionId ? "已采用稿" : "候选稿 · 采用后设为默认工作稿") : null,
+              chosen ? h("span", { className: "script-muted", title: chosen.id === project.currentVersionId ? "已采用稿：默认工作稿；手动切换版本后，返修以当前浏览稿为准。" : "候选稿：刚生成或修改的新版本，采用后设为默认工作稿。" }, chosen.id === project.currentVersionId ? "已采用稿" : "候选稿 · 采用后设为默认工作稿") : null,
               chosen && chosen.id !== project.currentVersionId ? h(Button, { disabled: !!project.pending, onClick: () => {
                 change({ currentVersionId: chosen.id });
                 setNotice("已采用当前稿，历史版本保留。");
@@ -906,7 +922,7 @@ window.__ModuleLoader__.load({
             } }, pendingText || renderHighlighted(output) || "载入原稿，或从创作简报生成。你可以直接编辑、审稿、润色或定向返修。"),
             output ? h(
               "div",
-              { className: "script-actionbar" },
+              { className: "script-actionbar script-document-tools", "aria-label": "稿件操作" },
               h(Button, { onClick: async () => {
                 try {
                   await navigator.clipboard.writeText(output);
@@ -945,13 +961,20 @@ window.__ModuleLoader__.load({
               "section",
               { style: card },
               h("h2", null, "编导指令"),
-              h("p", { className: "script-muted" }, "基于当前浏览稿生成新版本，锁定项始终保留。"),
-              chosen ? h("div", { className: "script-source-profile" }, h("small", null, "来源受众：" + WB.resolveCreativeProfile(chosen).audience + "；题材：" + (WB.resolveCreativeProfile(chosen).themeTags.join("、") || "开放") + "；风格：" + (WB.resolveCreativeProfile(chosen).styleTags.join("、") || "按稿件")), h("label", null, h("input", { type: "checkbox", checked: useProjectProfile, onChange: (event) => setUseProjectProfile(event.target.checked) }), " 本次改用当前项目创作定位")) : null,
+              h(
+                "div",
+                { className: "script-object-context", role: "group", "aria-label": "本次操作对象" },
+                h("strong", null, chosen ? "正在修改：v" + viewedIndex + " · " + (chosen.id === project.currentVersionId ? "已采用稿" : "候选稿") : "尚未载入稿件"),
+                chosen ? h("small", null, parentIndex ? "来源：v" + parentIndex + "；操作结果保存为新版本。" : "操作结果保存为新版本，原稿保留。") : h("small", null, "请先载入原稿或生成一份稿件。"),
+                h("p", null, "本次定位：" + (chosen && !useProjectProfile ? "沿用来源稿" : "当前项目") + " · " + effectiveProfile.audience),
+                h("small", null, "题材：" + (effectiveProfile.themeTags.join("、") || "开放") + "；风格：" + (effectiveProfile.styleTags.join("、") || "按稿件")),
+                chosen ? h("label", { className: "script-source-profile" }, h("input", { type: "checkbox", checked: useProjectProfile, onChange: (event) => setUseProjectProfile(event.target.checked) }), " 本次改用当前项目创作定位") : null
+              ),
               selection ? h("div", { className: "script-selection" }, h("strong", null, "已选文字"), h("p", null, selection.slice(0, 200) + (selection.length > 200 ? "…" : "")), h(Button, { onClick: () => setSelection("") }, "清除选择")) : null,
               h(Field, { label: "修改意图", value: revision, rows: 5, onChange: setRevision, placeholder: "例如：第3段情绪推进太快，补一层犹豫；保留结尾和金额。" }),
               segments.length ? h("label", null, "返修范围", h("select", { style: input, value: reviseSegment, onChange: (e) => setReviseSegment(e.target.value) }, h("option", { value: "" }, "全文"), ...segments.map((match, i) => h("option", { key: i, value: String(i + 1) }, "第" + (i + 1) + (mode.startsWith("live") ? "段 · " : "场 · ") + match[0])))) : null,
               h(Button, { primary: true, disabled: busy || !!project.pending || !output || !revision.trim(), onClick: () => submitTask(phase, [reviseSegment ? "仅修改第" + reviseSegment + (mode.startsWith("live") ? "段话轮" : "场") + "，其余保持原样。" : "", selection ? "仅修改以下选中文字，返回包含修改的完整稿件，其他内容保持原样：\n" + selection : "", revision].filter(Boolean).join("\n")) }, kind === "script" ? "定向返修" : "优化" + { idea: "思路", outline: "大纲" }[kind]),
-              h("div", { style: { ...row, marginTop: 12 } }, h(Button, { disabled: busy || !!project.pending || !output, onClick: () => submitTask("polish", "仅润色当前稿件，保持其内容类型与结构。") }, "文字润色"), h(Button, { disabled: busy || !!project.pending || !output, onClick: () => submitTask("audit", "按位置、问题、依据、修复建议审稿；结合目标受众、题材和风格，核对事实依据、信息递进、对白与衔接；仅在剧情需要时评估人物动机和情绪。") }, "AI 审稿")),
+              h("div", { className: "script-inspector-tools", style: { ...row, marginTop: 12 } }, h(Button, { disabled: busy || !!project.pending || !output, onClick: () => submitTask("polish", "仅润色当前稿件，保持其内容类型与结构。") }, "文字润色"), h(Button, { disabled: busy || !!project.pending || !output, onClick: () => submitTask("audit", "按位置、问题、依据、修复建议审稿；结合目标受众、题材和风格，核对事实依据、信息递进、对白与衔接；仅在剧情需要时评估人物动机和情绪。") }, "AI 审稿")),
               kind === "idea" && output ? h("div", { className: "script-actionbar" }, h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask("outline", "基于此思路生成结构大纲。", 0, { ...project, draft: output, sourceVersion: chosen, deliverable: "outline" }) }, "扩成大纲")) : null,
               ["idea", "outline"].includes(kind) && output ? h("div", { className: "script-actionbar" }, h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask("full", "基于当前稿件扩写完整剧本，保留已确定事实与结尾。", 0, { ...project, draft: output, sourceVersion: chosen, deliverable: "script" }) }, "扩成剧本"), kind === "outline" ? h(Button, { onClick: () => {
                 change({ outline: output });
@@ -959,9 +982,35 @@ window.__ModuleLoader__.load({
               } }, "确认大纲") : null) : null
             ),
             roleStats && roleStats.roles.length ? h("section", { style: card }, h("h3", null, "角色台词统计"), h("ul", { className: "script-roles" }, roleStats.roles.map((r) => h("li", { key: r.name }, h("span", { className: "script-role-name" }, r.name), h("span", { className: "script-role-bar" }, h("i", { style: { width: Math.round(r.share * 100) + "%" } })), h("span", { className: "script-muted" }, r.turns + " 段 · " + r.chars + " 字 · " + Math.round(r.share * 100) + "%"))))) : null,
-            output && kind === "script" ? h("section", { style: card }, h("h3", null, "程序检查"), h("p", null, check.ok ? "格式检查通过" : check.issues.length + " 项待核对"), h("ul", null, check.issues.map((issue, i) => h("li", { key: i }, (issue.segment ? "第" + issue.segment + "段：" : issue.scene ? "第" + issue.scene + "场：" : "") + issue.message))), check.issues.length ? h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask(phase, "仅修复以下问题，保持其余内容：\n" + check.issues.map((issue) => issue.message).join("\n")) }, "修复检查问题") : null) : null,
+            output && kind === "script" ? h(
+              "section",
+              { style: card, "aria-label": "程序检查结果" },
+              h("h3", null, "程序检查"),
+              h("p", { className: check.ok ? "script-muted" : "" }, check.ok ? "格式检查通过" : visibleIssueCount + " 项待核对 · 按位置排列"),
+              h(
+                "div",
+                { className: "script-check-groups" },
+                ...checkGroups.map((group) => h(
+                  "details",
+                  { key: group.key, open: true },
+                  h("summary", null, group.label + " · " + group.issues.length + "项"),
+                  h(
+                    "ul",
+                    null,
+                    ...group.issues.map((issue, i) => h(
+                      "li",
+                      { key: i },
+                      h("span", null, issue.message),
+                      issue.role ? h("small", { className: "script-muted" }, "角色：" + issue.role) : null,
+                      issue.excerpt ? h("blockquote", null, issue.excerpt) : null
+                    ))
+                  )
+                ))
+              ),
+              check.issues.length ? h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask(phase, "仅修复以下问题，保持其余内容：\n" + check.issues.map((issue) => issue.message).join("\n")) }, "修复检查问题") : null
+            ) : null,
             humanizeCheck ? h("section", { style: card }, h("h3", null, "润色自检"), h("p", null, humanizeCheck.ok ? "未命中预设表达" : humanizeCheck.issues.map((issue) => issue.message).join("；"))) : null,
-            reports.length ? h("section", { style: card }, h("h3", null, "本稿审稿记录"), h("p", null, reports.length + " 份报告"), h("div", { style: row }, h(Button, { onClick: () => setTab("reports") }, "查看审稿记录"), h(Button, { primary: true, disabled: busy || !!project.pending, onClick: () => {
+            reports.length ? h("section", { style: card }, h("h3", null, "本稿审稿记录"), h("p", null, reports.length + " 份报告"), h("div", { style: row }, h(Button, { onClick: () => setTab("reports") }, "查看审稿记录"), h(Button, { disabled: busy || !!project.pending, onClick: () => {
               const latestReport = reports.at(-1);
               setRevision("参考以下审稿意见，修复明确问题，保持已正确部分：\n" + latestReport.text);
             } }, "按最新意见返修"))) : null,
@@ -975,11 +1024,23 @@ window.__ModuleLoader__.load({
           { style: card },
           h("h2", null, "审稿与提取记录"),
           h("p", { className: "script-muted" }, "报告按来源版本归档，不替换稿件。"),
-          ...(project.reports || []).slice().reverse().map((report) => h("details", { key: report.id, style: { ...card, background: T.layer2 }, open: true, title: report.sourceVersionId ? "来源版本：这份报告是在该稿基础上生成的，审稿不进入正文。" : "" }, h("summary", null, new Date(report.createdAt).toLocaleString() + " · " + (report.sourceVersionId ? "来源 v" + (project.versions.findIndex((v) => v.id === report.sourceVersionId) + 1) : "历史报告")), h("pre", { className: "script-material-text" }, report.text), h(Button, { disabled: busy || !!project.pending || !project.versions.some((v) => v.id === report.sourceVersionId), onClick: () => {
-            setSelectedVersion(report.sourceVersionId);
-            setRevision("参考以下审稿意见，修复明确问题，保持已正确部分：\n" + report.text);
-            setTab("result");
-          } }, "以来源稿按意见返修"))),
+          ...(project.reports || []).slice().reverse().map((report, index) => {
+            const sourceIndex = project.versions.findIndex((v) => v.id === report.sourceVersionId);
+            const source = sourceIndex >= 0 ? project.versions[sourceIndex] : null;
+            const sourceLabel = source ? "来源 v" + (sourceIndex + 1) + " · " + (source.id === project.currentVersionId ? "已采用稿" : "候选稿") : report.sourceVersionId ? "来源稿已不存在" : "历史报告 · 来源未记录";
+            return h(
+              "details",
+              { key: report.id, style: { ...card, background: T.layer2 }, open: index === 0, title: "来源版本：报告单独归档，原稿保留。" },
+              h("summary", null, new Date(report.createdAt).toLocaleString() + " · " + sourceLabel),
+              h("p", { className: "script-report-context" }, sourceLabel + "；以下为报告原文。"),
+              h("pre", { className: "script-material-text script-report-body" }, report.text),
+              h(Button, { disabled: busy || !!project.pending || !source, onClick: () => {
+                setSelectedVersion(report.sourceVersionId);
+                setRevision("参考以下审稿意见，修复明确问题，保持已正确部分：\n" + report.text);
+                setTab("result");
+              } }, "以来源稿按意见返修")
+            );
+          }),
           !(project.reports || []).length ? h("p", null, "暂无报告。可在稿件工作区审稿或提取人物卡。") : null
         );
       }
@@ -991,6 +1052,7 @@ window.__ModuleLoader__.load({
           "header",
           { className: "script-header" },
           h("div", null, h("p", { className: "script-eyebrow" }, "SCRIPT WORKBENCH"), h("h1", null, "剧本工作台"), h("p", { className: "script-muted" }, "选题 · 结构 · 对白 · 返修")),
+          h(Button, { onClick: () => ctx.layout.selectPanel(null), title: "返回DSH当前会话，项目保留" }, "返回会话"),
           h("details", { className: "script-settings" }, h("summary", null, "工作台设置"), h(
             "div",
             { style: card },
@@ -1039,8 +1101,13 @@ window.__ModuleLoader__.load({
           { className: "script-projectbar" },
           h("label", null, "项目", h("select", { "aria-label": "切换项目", style: { ...input, margin: 0, maxWidth: 230 }, value: project.id, onChange: (e) => setStore((current) => ({ ...current, activeId: e.target.value })) }, ...store.projects.map((p) => h("option", { key: p.id, value: p.id }, p.title + (p.pending ? " · 运行中" : ""))))),
           h("label", { className: "script-project-title" }, "名称", h("input", { "aria-label": "项目名称", style: { ...input, margin: 0 }, value: project.title, onChange: (e) => change({ title: e.target.value }) })),
-          h(Button, { onClick: addProject }, "新建项目"),
-          h("small", { role: "status", className: "script-save" }, store.blocked ? store.error || "保存暂停，请处理存档冲突" : saveStatus || "读取草稿…")
+          h(Button, { onClick: addProject }, "新建项目")
+        ),
+        h(
+          "div",
+          { className: "script-feedback" },
+          h("div", { role: "status", "aria-label": "项目保存状态", className: "script-save-feedback", "data-error": store.blocked || /暂停|失败/.test(saveStatus) ? "true" : void 0 }, h("strong", null, "项目保存"), h("span", null, store.blocked ? store.error || "保存暂停，请处理存档冲突" : saveStatus || "读取草稿…")),
+          h("div", { role: "status", "aria-label": "AI任务状态", className: "script-ai-feedback" }, h("strong", null, "AI任务"), h("span", null, busy ? taskStatus || "准备提交…" : project.pending ? "运行中 · " + ({ idea: "生成思路", "idea-opt": "优化思路", outline: "生成大纲", "outline-opt": "优化大纲", full: "生成剧本", revision: "定向返修", polish: "文字润色", audit: "审稿 / 提取", persona: "人设处理" }[project.pending.phase] || "处理中") : project.retry ? "上次未完成 · 可重试" : "就绪"))
         ),
         store.conflict ? h("section", { style: card }, h("p", null, "其他标签页已更新项目，本页内容保留。"), h(Button, { onClick: () => {
           const disk = loadCatalog();
@@ -1075,8 +1142,8 @@ window.__ModuleLoader__.load({
           h("label", null, "载入方式", h("select", { style: input, value: importStrategy, onChange: (e) => setImportStrategy(e.target.value) }, h("option", { value: "materials" }, "保存为独立素材（不覆盖原稿）"), h("option", { value: "append" }, "追加到原稿 / 证据"), h("option", { value: "replace" }, "替换原稿 / 证据（所有已选文字合并）"))),
           h("div", { style: row }, h(Button, { primary: true, onClick: applyImport }, "确认导入"), h(Button, { onClick: () => setImportPreview(null) }, "取消"))
         ) : null,
-        notice ? h("div", { role: "status", className: "script-notice" }, notice) : null,
-        busy || project.pending ? h("div", { role: "status", className: "script-taskbar" }, h("span", null, busy ? taskStatus || "准备任务" : "任务运行中 · " + project.pending.phase + " · 已用 " + elapsed + " 秒"), project.pending ? h("div", { style: row }, h(Button, { onClick: () => ctx.uiWorkspace.openSession(project.sessionId) }, "查看任务"), h(Button, { disabled: busy, onClick: async () => {
+        notice ? h("div", { role: "status", "aria-label": "操作反馈", className: "script-notice" }, notice) : null,
+        project.pending ? h("div", { className: "script-taskbar", "aria-label": "任务操作" }, h("span", { "aria-live": "off" }, "已用 " + elapsed + " 秒 · 结果保存为新版本"), project.pending ? h("div", { style: row }, h(Button, { onClick: () => ctx.uiWorkspace.openSession(project.sessionId) }, "查看任务"), h(Button, { disabled: busy, onClick: async () => {
           const id = project.id, pending = project.pending;
           try {
             await ctx.sessions.using(project.sessionId, { source: "controllerOperation" }, async (reference) => {
@@ -1097,10 +1164,35 @@ window.__ModuleLoader__.load({
       return h("svg", { viewBox: "0 0 24 24", width: size, height: size, "aria-hidden": true }, h("rect", { x: 4, y: 2, width: 16, height: 20, rx: 3, fill: "none", stroke: "currentColor", strokeWidth: 1.6 }), ...[7, 12, 17].map((y) => h("path", { key: y, d: "M8 " + y + "h8", stroke: "currentColor", strokeWidth: 1.6 })));
     }
     return {
-      inject: ["slots", "sessions", "uiWorkspace", "fileUpload", "remote", "remote.session"],
+      inject: ["slots", "sessions", "uiWorkspace", "layout", "fileUpload", "remote", "remote.session"],
       apply(ctx) {
         ctx.slots.inject("sidebar.panellist", () => ctx.slots.register({ name: "sidebar.panellist", id: "elderly-script", order: 20, label: "剧本工具" }, Icon));
         ctx.slots.inject("main", () => ctx.slots.register({ name: "main", key: "elderly-script" }, () => h(MainPanel, { ctx })));
+        ctx.slots.inject("conversation.session.header.utilities", () => ctx.slots.register({
+          name: "conversation.session.header.utilities",
+          id: "elderly-script-shortcut",
+          order: 20
+        }, () => h("button", {
+          type: "button",
+          "aria-label": "打开剧本工作台",
+          title: "打开剧本工作台，保留当前会话",
+          onClick: () => ctx.layout.selectPanel("elderly-script"),
+          style: {
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "5px 9px",
+            minHeight: 32,
+            border: "1px solid " + T.border,
+            borderRadius: 8,
+            background: T.layer1,
+            color: T.text,
+            font: "inherit",
+            fontSize: 12,
+            whiteSpace: "nowrap",
+            cursor: "pointer"
+          }
+        }, h(Icon, { size: 16 }), "剧本工作台")));
       }
     };
   }

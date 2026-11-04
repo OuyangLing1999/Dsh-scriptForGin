@@ -616,6 +616,38 @@ function findMatches(text, query, options = {}) {
   return { matches, count: matches.length };
 }
 
+// Presentation-only grouping: retain original issue objects and their first-seen order.
+function groupCheckIssues(issues) {
+  if (!Array.isArray(issues)) return [];
+  const groups = new Map();
+  const signatures = new Map();
+  const positiveIndex = value => Number.isSafeInteger(value) && value > 0;
+  for (const issue of issues) {
+    if (!issue || typeof issue !== 'object' || Array.isArray(issue)
+      || typeof issue.message !== 'string' || !issue.message.trim()) continue;
+    const kind = positiveIndex(issue.scene) ? 'scene' : positiveIndex(issue.segment) ? 'segment' : 'global';
+    const position = kind === 'global' ? null : issue[kind];
+    const key = kind === 'global' ? kind : kind + ':' + position;
+    if (!groups.has(key)) {
+      groups.set(key, { key, label: kind === 'scene' ? '第' + position + '场' : kind === 'segment' ? '第' + position + '段话轮' : '全文', issues: [] });
+      signatures.set(key, new Map());
+    }
+    // Nested Maps preserve exact field equality, including missing vs null, without JSON coercion.
+    let seen = signatures.get(key);
+    const fields = [issue.code, issue.message, issue.role, issue.excerpt];
+    for (let index = 0; index < fields.length - 1; index += 1) {
+      const value = fields[index];
+      if (!seen.has(value)) seen.set(value, new Map());
+      seen = seen.get(value);
+    }
+    const excerpt = fields[fields.length - 1];
+    if (seen.has(excerpt)) continue;
+    seen.set(excerpt, true);
+    groups.get(key).issues.push(issue);
+  }
+  return [...groups.values()];
+}
+
 function buildExampleProject() {
   const versionId = 'example-v1';
   const scriptText = [
@@ -680,7 +712,7 @@ function buildExampleProject() {
   };
 }
 
-return {analyzeRoles,findMatches,buildExampleProject};
+return {analyzeRoles,findMatches,buildExampleProject,groupCheckIssues};
 })();
     const UI = (() => {
 // Pure update policy. Host parseInstallSpec supports HTTP .tgz/.tar.gz, not release ZIPs.
@@ -751,7 +783,7 @@ function checkHumanize(text) {
 
 return {checkHumanize};
 })();
-    const WORKBENCH_CSS = ".script-workbench {\n  box-sizing: border-box;\n  height: 100%;\n  overflow: auto;\n  padding: 24px clamp(14px, 3vw, 38px) 48px;\n  max-width: 1520px;\n  margin: 0 auto;\n  color: var(--dsw-alias-label-primary);\n  font-size: var(--script-font,14px);\n  line-height: 1.65;\n  scrollbar-gutter: stable;\n}\n.script-workbench * {\n  box-sizing: border-box;\n  min-width: 0;\n}\n.script-workbench h1 {\n  font-size: 1.9em;\n  letter-spacing: -.035em;\n  margin: 0;\n  font-weight: 650;\n}\n.script-workbench h2 {\n  font-size: 1.12em;\n  margin: 0 0 18px;\n  font-weight: 650;\n}\n.script-workbench h3 {\n  font-size: 1em;\n  margin: 0 0 12px;\n}\n.script-workbench label {\n  display: block;\n  font-size: 1em;\n}\n.script-workbench button,\n.script-workbench input,\n.script-workbench textarea,\n.script-workbench select {\n  font: inherit;\n}\n.script-workbench button {\n  transition: filter .15s, box-shadow .15s;\n}\n.script-workbench button:hover:enabled {\n  filter: brightness(.96);\n}\n.script-workbench :is(button, input, select, textarea, summary):focus-visible {\n  outline: 2px solid var(--dsw-alias-brand-primary);\n  outline-offset: 3px;\n}\n.script-workbench textarea {\n  resize: vertical;\n  line-height: 1.7;\n  min-height: 70px;\n}\n.script-workbench summary {\n  cursor: pointer;\n  list-style-position: inside;\n  font-weight: 550;\n}\n.script-workbench pre {\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  font-family: inherit;\n}\n.script-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 20px;\n  padding-bottom: 20px;\n}\n.script-eyebrow {\n  font-size: .72em;\n  letter-spacing: .2em;\n  color: var(--dsw-alias-label-secondary);\n  margin: 0 0 5px;\n}\n.script-muted {\n  color: var(--dsw-alias-label-secondary);\n  font-size: .93em;\n}\n.script-header .script-muted {\n  margin: 3px 0 0;\n}\n.script-settings {\n  position: relative;\n}\n.script-settings > summary {\n  padding: 9px 14px;\n  border: 1px solid var(--dsw-alias-border-l2);\n  border-radius: 9px;\n  font-size: .93em;\n}\n.script-settings[open] > div {\n  position: absolute;\n  right: 0;\n  top: 44px;\n  width: min(400px, calc(100vw - 44px));\n  z-index: 5;\n  box-shadow: 0 16px 48px #0002;\n}\n.script-settings hr {\n  border: 0;\n  border-top: 1px solid var(--dsw-alias-border-l2);\n  margin: 16px 0;\n}\n.script-projectbar {\n  display: flex;\n  align-items: end;\n  gap: 12px;\n  flex-wrap: wrap;\n  padding: 16px 18px;\n  margin-bottom: 18px;\n  border: 1px solid var(--dsw-alias-border-l2);\n  border-radius: 12px;\n  background: var(--dsw-alias-bg-layer-1);\n}\n.script-projectbar > label {\n  font-size: .85em;\n}\n.script-project-title {\n  flex: 1;\n  min-width: 160px;\n}\n.script-save {\n  width: 100%;\n  color: var(--dsw-alias-label-secondary);\n  font-size: .85em;\n}\n.script-tabs {\n  display: flex;\n  gap: 6px;\n  flex-wrap: wrap;\n  margin: 0 0 22px;\n  padding: 4px;\n  background: var(--dsw-alias-bg-layer-2);\n  border-radius: 11px;\n  width: fit-content;\n  max-width: 100%;\n}\n.script-tabs button {\n  border-color: transparent !important;\n}\n.script-brief-grid {\n  display: grid;\n  grid-template-columns: minmax(0, 1.65fr) minmax(280px, 1fr);\n  gap: 20px;\n  align-items: start;\n}\n.script-result-grid {\n  display: grid;\n  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);\n  gap: 20px;\n  align-items: start;\n}\n.script-section-heading {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 10px;\n  flex-wrap: wrap;\n  margin-bottom: 16px;\n}\n.script-section-heading h2 {\n  margin: 0;\n}\n.script-form-grid {\n  display: grid;\n  grid-template-columns: 1fr 1fr;\n  gap: 12px;\n}\n.script-badge {\n  display: inline-block;\n  padding: 3px 9px;\n  border: 1px solid var(--dsw-alias-border-l2);\n  border-radius: 6px;\n  background: var(--dsw-alias-bg-layer-2);\n  font-size: .78em;\n  letter-spacing: .02em;\n}\n.script-actionbar {\n  display: flex;\n  gap: 9px;\n  align-items: center;\n  flex-wrap: wrap;\n  margin-top: 16px;\n  padding-top: 14px;\n  border-top: 1px solid var(--dsw-alias-border-l2);\n}\n.script-document {\n  font-size: 1.07em;\n  line-height: 2;\n  min-height: 420px;\n  max-height: 72vh;\n  overflow: auto;\n  padding: 24px 20px;\n  margin: 16px 0;\n  background: var(--dsw-alias-bg-layer-2);\n  border-radius: 9px;\n  tab-size: 4;\n}\n.script-material-text {\n  max-height: 320px;\n  overflow: auto;\n  padding: 12px;\n  line-height: 1.8;\n  background: var(--dsw-alias-bg-layer-2);\n  border-radius: 7px;\n}\n.script-diff {\n  max-height: 480px;\n  overflow: auto;\n  line-height: 1.8;\n  padding: 12px;\n  background: var(--dsw-alias-bg-layer-2);\n  border-radius: 8px;\n  font-size: .93em;\n}\n.script-notice {\n  padding: 10px 14px;\n  margin-bottom: 16px;\n  border-left: 3px solid var(--dsw-alias-brand-primary);\n  background: var(--dsw-alias-bg-layer-1);\n  border-radius: 0 8px 8px 0;\n  font-size: .93em;\n  overflow-wrap: anywhere;\n}\n.script-taskbar {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  flex-wrap: wrap;\n  padding: 12px 16px;\n  margin: 0 0 16px;\n  background: var(--dsw-alias-bg-layer-2);\n  border: 1px solid var(--dsw-alias-border-l2);\n  border-radius: 9px;\n}\n.script-selection {\n  padding: 10px 12px;\n  margin-bottom: 12px;\n  background: var(--dsw-alias-bg-layer-2);\n  border-left: 2px solid var(--dsw-alias-brand-primary);\n  border-radius: 4px;\n  overflow-wrap: anywhere;\n}\n.script-more {\n  position: relative;\n}\n.script-more > summary {\n  padding: 7px 10px;\n  font-size: .93em;\n}\n.script-more[open] > div {\n  position: absolute;\n  left: 0;\n  bottom: 36px;\n  width: min(340px, 70vw);\n  padding: 12px;\n  background: var(--dsw-alias-bg-layer-1);\n  border: 1px solid var(--dsw-alias-border-l2);\n  border-radius: 9px;\n  box-shadow: 0 12px 36px #0002;\n  z-index: 3;\n}\n.script-reading {\n  grid-template-columns: minmax(0, 1fr);\n}\n.script-reading > .script-inspector {\n  display: none;\n}\n.script-reading .script-document {\n  max-height: none;\n  min-height: 65vh;\n  padding: 30px clamp(14px, 6vw, 80px);\n}\n@media (max-width: 960px) {\n  .script-brief-grid,\n  .script-result-grid {\n    grid-template-columns: minmax(0, 1fr);\n  }\n  .script-inspector {\n    display: grid;\n    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);\n    gap: 14px;\n  }\n  .script-inspector > section:first-child {\n    grid-column: 1/-1;\n  }\n}\n@media (max-width: 560px) {\n  .script-workbench {\n    padding: 16px 12px 32px;\n  }\n  .script-header {\n    gap: 8px;\n  }\n  .script-header h1 {\n    font-size: 1.6em;\n  }\n  .script-eyebrow {\n    font-size: .65em;\n  }\n  .script-form-grid,\n  .script-inspector {\n    grid-template-columns: minmax(0, 1fr);\n  }\n  .script-projectbar {\n    padding: 12px;\n    gap: 10px;\n  }\n  .script-projectbar > label {\n    width: 100%;\n  }\n  .script-projectbar select {\n    max-width: 100% !important;\n  }\n  .script-document {\n    padding: 15px 12px;\n    min-height: 300px;\n  }\n  .script-tabs {\n    width: 100%;\n    gap: 4px;\n  }\n  .script-tabs button {\n    flex: 1 1 40%;\n    padding: 8px 6px !important;\n  }\n  .script-settings > summary {\n    padding: 7px 9px;\n  }\n  .script-settings[open] > div {\n    right: 0;\n  }\n  .script-more[open] > div {\n    left: auto;\n    right: 0;\n  }\n  .script-actionbar > span {\n    width: 100%;\n  }\n}\n@media (prefers-reduced-motion: reduce) {\n  .script-workbench * {\n    transition: none !important;\n  }\n}\n.script-onboard {\n  margin-bottom: 18px;\n  padding: 18px 20px;\n  border: 1px solid var(--dsw-alias-brand-primary);\n  border-radius: 12px;\n  background: var(--dsw-alias-bg-layer-1);\n}\n.script-onboard h2 {\n  margin: 0;\n}\n.script-onboard-actions {\n  display: flex;\n  gap: 9px;\n  flex-wrap: wrap;\n  margin-top: 14px;\n}\n.script-search {\n  display: flex;\n  gap: 8px;\n  align-items: center;\n  flex-wrap: wrap;\n  margin: 0 0 12px;\n}\n.script-search input {\n  flex: 1;\n  min-width: 200px;\n  margin: 0 !important;\n}\n.script-search .script-muted {\n  white-space: nowrap;\n}\n.script-next-step {\n  display: flex;\n  gap: 12px;\n  align-items: center;\n  flex-wrap: wrap;\n  justify-content: space-between;\n  padding: 10px 14px;\n  margin: 0 0 12px;\n  border: 1px solid var(--dsw-alias-brand-primary);\n  border-radius: 9px;\n  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 6%, transparent);\n}\n.script-roles {\n  list-style: none;\n  margin: 0;\n  padding: 0;\n}\n.script-roles li {\n  display: grid;\n  grid-template-columns: minmax(64px, auto) 1fr auto;\n  align-items: center;\n  gap: 10px;\n  padding: 7px 0;\n  border-bottom: 1px solid var(--dsw-alias-border-l2);\n}\n.script-roles li:last-child {\n  border-bottom: 0;\n}\n.script-role-name {\n  font-weight: 600;\n}\n.script-role-bar {\n  height: 8px;\n  border-radius: 4px;\n  background: var(--dsw-alias-bg-layer-2);\n  overflow: hidden;\n}\n.script-role-bar i {\n  display: block;\n  height: 100%;\n  background: var(--dsw-alias-brand-primary);\n  border-radius: 4px;\n}\nmark.script-search-hit {\n  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 24%, transparent);\n  color: inherit;\n  border-radius: 2px;\n}\nmark.script-search-current {\n  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 34%, transparent);\n  color: inherit;\n  border-radius: 2px;\n  outline: 1px solid var(--dsw-alias-state-error-primary);\n}\n@media (max-width: 560px) {\n  .script-search {\n    flex-direction: column;\n    align-items: stretch;\n  }\n  .script-search input {\n    min-width: 0;\n  }\n  .script-next-step {\n    flex-direction: column;\n    align-items: flex-start;\n  }\n}\n.script-workbench .script-creative-profile {\n  margin-top: 14px;\n  background: var(--dsw-alias-bg-layer-2);\n}\n.script-workbench .script-tag-editor {\n  margin-top: 16px;\n  padding-top: 10px;\n  border-top: 1px solid var(--dsw-alias-border-l2);\n}\n.script-workbench .script-tag-list {\n  display: flex;\n  gap: 6px;\n  flex-wrap: wrap;\n  align-items: center;\n  margin: 8px 0;\n}\n.script-workbench .script-tag-list button {\n  overflow-wrap: anywhere;\n  max-width: 100%;\n  white-space: normal;\n}\n.script-workbench .script-tag-add {\n  display: flex;\n  gap: 8px;\n  margin: 8px 0;\n}\n.script-workbench .script-tag-add input {\n  font: inherit;\n  min-width: 0;\n  flex: 1;\n  border: 1px solid var(--dsw-alias-border-l2);\n  border-radius: 8px;\n  background: var(--dsw-alias-bg-base);\n  color: inherit;\n  padding: 8px;\n}\n.script-workbench .script-tag-selected {\n  border-color: var(--dsw-alias-brand-primary) !important;\n}\n.script-workbench .script-tag-favorite {\n  display: inline-flex;\n  max-width: 100%;\n  gap: 2px;\n}\n.script-workbench .script-tag-favorites {\n  margin-top: 10px;\n}\n.script-workbench .script-source-profile {\n  display: grid;\n  gap: 8px;\n  margin-bottom: 12px;\n  line-height: 1.6;\n}\n@media (max-width: 560px) {\n  .script-workbench .script-tag-add {\n    flex-wrap: wrap;\n  }\n  .script-workbench .script-tag-add input {\n    flex-basis: 100%;\n  }\n}\n";
+    const WORKBENCH_CSS = ".script-workbench {\n  box-sizing: border-box;\n  height: 100%;\n  overflow: auto;\n  padding: 16px clamp(12px, 2.4vw, 30px) 36px;\n  max-width: 1600px;\n  margin: 0 auto;\n  color: var(--dsw-alias-label-primary);\n  font-size: var(--script-font, 14px);\n  line-height: 1.65;\n  scrollbar-gutter: stable;\n  scroll-padding-block: 16px 112px;\n  overflow-wrap: anywhere;\n}\n.script-workbench * {\n  box-sizing: border-box;\n  min-width: 0;\n}\n.script-workbench h1 {\n  font-size: 1.7em;\n  letter-spacing: -.035em;\n  margin: 0;\n  font-weight: 650;\n}\n.script-workbench h2 {\n  font-size: 1.12em;\n  margin: 0 0 14px;\n  font-weight: 650;\n}\n.script-workbench h3 {\n  font-size: 1em;\n  margin: 0 0 10px;\n}\n.script-workbench label {\n  display: block;\n  font-size: 1em;\n}\n.script-workbench :is(button, input, textarea, select) {\n  font: inherit;\n  max-width: 100%;\n}\n.script-workbench button {\n  transition: filter .15s, box-shadow .15s;\n  overflow-wrap: anywhere;\n  white-space: normal;\n}\n.script-workbench button:hover:enabled {\n  filter: brightness(.96);\n}\n.script-workbench :is(button, input, select, textarea, summary):focus-visible {\n  outline: 2px solid var(--dsw-alias-brand-primary);\n  outline-offset: 3px;\n}\n.script-workbench textarea {\n  resize: vertical;\n  line-height: 1.7;\n  min-height: 70px;\n}\n.script-workbench :is(input, textarea, select) {\n  scroll-margin-block: 28px 112px;\n}\n.script-workbench summary {\n  cursor: pointer;\n  list-style-position: inside;\n  font-weight: 550;\n  overflow-wrap: anywhere;\n}\n.script-workbench pre {\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  font-family: inherit;\n}\n.script-workbench .script-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 12px;\n  padding-bottom: 12px;\n}\n.script-workbench .script-eyebrow {\n  font-size: .68em;\n  letter-spacing: .16em;\n  color: var(--dsw-alias-label-secondary);\n  margin: 0 0 2px;\n}\n.script-workbench .script-muted {\n  color: var(--dsw-alias-label-secondary);\n  font-size: .93em;\n}\n.script-workbench .script-header .script-muted {\n  margin: 2px 0 0;\n}\n.script-workbench .script-settings {\n  position: relative;\n  flex: 0 0 auto;\n}\n.script-workbench .script-settings > summary {\n  padding: 6px 10px;\n  border: 1px solid var(--dsw-alias-border-l2);\n  border-radius: 8px;\n  font-size: .9em;\n}\n.script-workbench .script-settings[open] > div {\n  position: absolute;\n  right: 0;\n  top: calc(100% + 6px);\n  width: min(400px, calc(100vw - 40px));\n  max-height: min(75vh, 660px);\n  overflow: auto;\n  z-index: 8;\n  box-shadow: 0 12px 32px color-mix(in srgb, var(--dsw-alias-label-primary) 15%, transparent);\n}\n.script-workbench .script-settings hr {\n  border: 0;\n  border-top: 1px solid var(--dsw-alias-border-l2);\n  margin: 12px 0;\n}\n.script-workbench .script-projectbar {\n  display: flex;\n  align-items: end;\n  gap: 8px 12px;\n  flex-wrap: wrap;\n  padding: 10px 14px;\n  margin-bottom: 12px;\n  border: 1px solid var(--dsw-alias-border-l2);\n  border-radius: 10px;\n  background: var(--dsw-alias-bg-layer-1);\n}\n.script-workbench .script-projectbar > label {\n  font-size: .85em;\n}\n.script-workbench .script-projectbar :is(button, input, select) {\n  min-height: 34px !important;\n}\n.script-workbench .script-project-title {\n  flex: 1;\n  min-width: 160px;\n}\n.script-workbench .script-save {\n  color: var(--dsw-alias-label-secondary);\n  font-size: .85em;\n  flex: 1 1 220px;\n  line-height: 1.5;\n}\n.script-workbench .script-tabs {\n  display: flex;\n  gap: 4px;\n  flex-wrap: wrap;\n  margin: 0 0 14px;\n  padding: 3px;\n  background: var(--dsw-alias-bg-layer-2);\n  border-radius: 10px;\n  width: fit-content;\n  max-width: 100%;\n}\n.script-workbench .script-tabs button {\n  border-color: transparent !important;\n  min-height: 34px !important;\n  padding: 6px 12px !important;\n}\n.script-workbench .script-brief-grid {\n  display: grid;\n  grid-template-columns: minmax(0, 1.8fr) minmax(290px, 1fr);\n  gap: 16px;\n  align-items: start;\n}\n.script-workbench .script-result-grid {\n  display: grid;\n  grid-template-columns: minmax(0, 2.55fr) minmax(280px, 1fr);\n  gap: 16px;\n  align-items: start;\n}\n.script-workbench .script-section-heading {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 8px;\n  flex-wrap: wrap;\n  margin-bottom: 12px;\n}\n.script-workbench .script-section-heading h2 {\n  margin: 0;\n}\n.script-workbench .script-form-grid {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 10px;\n}\n.script-workbench .script-badge {\n  display: inline-block;\n  padding: 2px 8px;\n  border: 1px solid var(--dsw-alias-border-l2);\n  border-radius: 6px;\n  background: var(--dsw-alias-bg-layer-2);\n  font-size: .78em;\n  letter-spacing: .02em;\n  overflow-wrap: anywhere;\n}\n.script-workbench .script-actionbar {\n  display: flex;\n  gap: 8px;\n  align-items: center;\n  flex-wrap: wrap;\n  margin-top: 14px;\n  padding-top: 12px;\n  border-top: 1px solid var(--dsw-alias-border-l2);\n}\n.script-workbench .script-brief-main {\n  position: relative;\n  isolation: isolate;\n  overflow: visible;\n}\n.script-workbench .script-brief-submit {\n  position: sticky;\n  bottom: 0;\n  z-index: 2;\n  display: flex;\n  align-items: center;\n  flex-wrap: wrap;\n  gap: 8px 12px;\n  margin-top: 16px;\n  padding: 12px 0;\n  border-top: 1px solid var(--dsw-alias-border-l2);\n  background: var(--dsw-alias-bg-layer-1);\n  box-shadow: 0 -8px 12px color-mix(in srgb, var(--dsw-alias-bg-layer-1) 80%, transparent);\n  scroll-margin-block-end: 12px;\n}\n.script-workbench .script-brief-submit > button {\n  min-height: 40px !important;\n  padding-inline: 18px !important;\n  font-weight: 600 !important;\n}\n.script-workbench .script-brief-submit > .script-muted {\n  flex: 1 1 180px;\n  font-size: .86em;\n}\n.script-workbench :is(.script-brief-secondary, .script-constraint-details) > summary {\n  padding-block: 2px;\n  line-height: 1.6;\n}\n.script-workbench :is(.script-brief-secondary, .script-constraint-details)[open] > summary {\n  margin-bottom: 14px;\n  padding-bottom: 10px;\n  border-bottom: 1px solid var(--dsw-alias-border-l2);\n}\n.script-workbench :is(.script-brief-secondary, .script-constraint-details) > summary :is(small, span) {\n  font-size: .85em;\n  font-weight: 400;\n  color: var(--dsw-alias-label-secondary);\n}\n.script-workbench .script-profile-summary {\n  margin: 6px 0 10px;\n  color: var(--dsw-alias-label-secondary);\n  font-size: .88em;\n  line-height: 1.6;\n  overflow-wrap: anywhere;\n}\n.script-workbench .script-document {\n  font-size: 1.07em;\n  line-height: 1.95;\n  min-height: 420px;\n  max-height: 76vh;\n  overflow: auto;\n  padding: 20px 22px;\n  margin: 12px 0;\n  background: var(--dsw-alias-bg-layer-2);\n  border-radius: 9px;\n  tab-size: 4;\n  scroll-padding-block: 24px;\n  scrollbar-gutter: stable;\n}\n.script-workbench .script-material-text {\n  max-height: 320px;\n  overflow: auto;\n  padding: 12px;\n  line-height: 1.8;\n  background: var(--dsw-alias-bg-layer-2);\n  border-radius: 7px;\n}\n.script-workbench .script-diff {\n  max-height: 480px;\n  overflow: auto;\n  line-height: 1.8;\n  padding: 12px;\n  background: var(--dsw-alias-bg-layer-2);\n  border-radius: 8px;\n  font-size: .93em;\n}\n.script-workbench :is(.script-document-tools, .script-inspector-tools) {\n  display: flex;\n  align-items: center;\n  flex-wrap: wrap;\n  gap: 7px;\n}\n.script-workbench .script-document-tools {\n  padding-block: 8px;\n  margin-top: 4px;\n}\n.script-workbench .script-document-tools button {\n  min-height: 34px !important;\n  padding: 6px 10px !important;\n  font-size: .9em !important;\n}\n.script-workbench .script-inspector-tools {\n  margin-top: 10px;\n}\n.script-workbench .script-inspector-tools > button {\n  flex: 1 1 120px;\n}\n.script-workbench :is(.script-source-profile, .script-object-context) {\n  display: grid;\n  gap: 8px;\n  margin-bottom: 12px;\n  line-height: 1.6;\n  overflow-wrap: anywhere;\n}\n.script-workbench .script-object-context {\n  padding: 11px 12px;\n  background: var(--dsw-alias-bg-layer-2);\n  border: 1px solid var(--dsw-alias-border-l2);\n  border-left: 3px solid var(--dsw-alias-brand-primary);\n  border-radius: 8px;\n  font-size: .9em;\n}\n.script-workbench .script-object-context :is(p, dl) {\n  margin: 0;\n}\n.script-workbench .script-object-context label {\n  padding-top: 6px;\n  border-top: 1px solid var(--dsw-alias-border-l2);\n  font-size: .95em;\n}\n.script-workbench .script-object-context input[type=checkbox] {\n  vertical-align: middle;\n  margin-inline: 0 6px;\n}\n.script-workbench .script-feedback {\n  display: grid;\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 8px;\n  margin: 0 0 12px;\n}\n.script-workbench :is(.script-save-feedback, .script-ai-feedback) {\n  min-height: 42px;\n  padding: 8px 12px;\n  border: 1px solid var(--dsw-alias-border-l2);\n  border-radius: 8px;\n  background: var(--dsw-alias-bg-layer-1);\n  color: var(--dsw-alias-label-secondary);\n  line-height: 1.5;\n  font-size: .86em;\n  overflow-wrap: anywhere;\n}\n.script-workbench :is(.script-save-feedback, .script-ai-feedback) strong {\n  color: var(--dsw-alias-label-primary);\n  font-weight: 550;\n  margin-inline-end: 6px;\n}\n.script-workbench :is(.script-save-feedback, .script-ai-feedback) :is(p, span) {\n  margin: 0;\n}\n.script-workbench .script-ai-feedback {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  flex-wrap: wrap;\n  gap: 6px;\n}\n.script-workbench .script-ai-feedback button {\n  min-height: 32px !important;\n  padding: 4px 9px !important;\n}\n.script-workbench .script-notice {\n  padding: 8px 12px;\n  margin-bottom: 12px;\n  border-left: 3px solid var(--dsw-alias-brand-primary);\n  background: var(--dsw-alias-bg-layer-1);\n  border-radius: 0 8px 8px 0;\n  font-size: .9em;\n  overflow-wrap: anywhere;\n}\n.script-workbench .script-taskbar {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  gap: 10px;\n  flex-wrap: wrap;\n  padding: 10px 12px;\n  margin: 0 0 12px;\n  background: var(--dsw-alias-bg-layer-2);\n  border: 1px solid var(--dsw-alias-border-l2);\n  border-radius: 8px;\n}\n.script-workbench .script-selection {\n  padding: 10px 12px;\n  margin-bottom: 12px;\n  background: var(--dsw-alias-bg-layer-2);\n  border-left: 2px solid var(--dsw-alias-brand-primary);\n  border-radius: 4px;\n  overflow-wrap: anywhere;\n}\n.script-workbench .script-more {\n  position: relative;\n}\n.script-workbench .script-more > summary {\n  padding: 6px 9px;\n  font-size: .9em;\n}\n.script-workbench .script-more[open] > div {\n  position: absolute;\n  left: 0;\n  bottom: calc(100% + 5px);\n  width: min(340px, 70vw);\n  max-height: 55vh;\n  overflow: auto;\n  padding: 12px;\n  background: var(--dsw-alias-bg-layer-1);\n  border: 1px solid var(--dsw-alias-border-l2);\n  border-radius: 9px;\n  box-shadow: 0 10px 26px color-mix(in srgb, var(--dsw-alias-label-primary) 15%, transparent);\n  z-index: 4;\n}\n.script-workbench .script-reading {\n  grid-template-columns: minmax(0, 1fr);\n}\n.script-workbench .script-reading > .script-inspector {\n  display: none;\n}\n.script-workbench .script-reading > section:first-child > .script-section-heading {\n  position: sticky;\n  top: 0;\n  z-index: 4;\n  padding-block: 8px;\n  background: var(--dsw-alias-bg-layer-1);\n  border-bottom: 1px solid var(--dsw-alias-border-l2);\n}\n.script-workbench .script-reading .script-document {\n  max-height: none;\n  min-height: 65vh;\n  padding: 24px clamp(14px, 4vw, 56px);\n}\n.script-workbench .script-onboard {\n  margin-bottom: 14px;\n  padding: 14px 16px;\n  border: 1px solid var(--dsw-alias-brand-primary);\n  border-radius: 10px;\n  background: var(--dsw-alias-bg-layer-1);\n}\n.script-workbench .script-onboard h2 {\n  margin: 0;\n}\n.script-workbench .script-onboard-actions {\n  display: flex;\n  gap: 8px;\n  flex-wrap: wrap;\n  margin-top: 12px;\n}\n.script-workbench .script-search {\n  display: flex;\n  gap: 7px;\n  align-items: center;\n  flex-wrap: wrap;\n  margin: 0 0 10px;\n}\n.script-workbench .script-search input {\n  flex: 1 1 180px;\n  min-width: 120px;\n  margin: 0 !important;\n}\n.script-workbench .script-search .script-muted {\n  white-space: nowrap;\n}\n.script-workbench .script-search button {\n  min-height: 34px !important;\n  padding: 5px 9px !important;\n  font-size: .88em !important;\n}\n.script-workbench .script-next-step {\n  display: flex;\n  gap: 10px;\n  align-items: center;\n  flex-wrap: wrap;\n  justify-content: space-between;\n  padding: 9px 12px;\n  margin: 0 0 10px;\n  border: 1px solid var(--dsw-alias-border-l2);\n  border-radius: 8px;\n  background: var(--dsw-alias-bg-layer-2);\n  font-size: .9em;\n}\n.script-workbench .script-roles {\n  list-style: none;\n  margin: 0;\n  padding: 0;\n}\n.script-workbench .script-roles li {\n  display: grid;\n  grid-template-columns: minmax(48px, auto) minmax(20px, 1fr) minmax(0, auto);\n  align-items: center;\n  gap: 8px;\n  padding: 7px 0;\n  border-bottom: 1px solid var(--dsw-alias-border-l2);\n}\n.script-workbench .script-roles li:last-child {\n  border-bottom: 0;\n}\n.script-workbench .script-role-name {\n  font-weight: 600;\n  overflow-wrap: anywhere;\n}\n.script-workbench .script-role-bar {\n  height: 7px;\n  border-radius: 4px;\n  background: var(--dsw-alias-bg-layer-2);\n  overflow: hidden;\n}\n.script-workbench .script-role-bar i {\n  display: block;\n  height: 100%;\n  background: var(--dsw-alias-brand-primary);\n  border-radius: 4px;\n}\n.script-workbench mark.script-search-hit {\n  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 24%, transparent);\n  color: inherit;\n  border-radius: 2px;\n}\n.script-workbench mark.script-search-current {\n  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 34%, transparent);\n  color: inherit;\n  border-radius: 2px;\n  outline: 1px solid var(--dsw-alias-state-error-primary);\n}\n.script-workbench .script-creative-profile {\n  margin-top: 0;\n  background: var(--dsw-alias-bg-layer-1);\n}\n.script-workbench .script-tag-editor {\n  margin-top: 12px;\n  padding-top: 10px;\n  border-top: 1px solid var(--dsw-alias-border-l2);\n}\n.script-workbench .script-tag-list {\n  display: flex;\n  gap: 6px;\n  flex-wrap: wrap;\n  align-items: center;\n  margin: 8px 0;\n}\n.script-workbench .script-tag-list button {\n  overflow-wrap: anywhere;\n  max-width: 100%;\n  white-space: normal;\n}\n.script-workbench .script-tag-selected {\n  display: inline-flex;\n  align-items: center;\n  gap: 4px;\n  max-width: 100%;\n  padding: 0 0 0 9px;\n  min-height: 32px;\n  color: var(--dsw-alias-label-primary);\n  border: 1px solid var(--dsw-alias-brand-primary) !important;\n  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 9%, var(--dsw-alias-bg-layer-1));\n  border-radius: 7px;\n  font-size: .9em;\n  line-height: 1.4;\n  overflow-wrap: anywhere;\n}\n.script-workbench .script-tag-selected > span {\n  min-width: 0;\n  padding-block: 5px;\n  overflow-wrap: anywhere;\n}\n.script-workbench .script-tag-remove {\n  display: inline-flex;\n  justify-content: center;\n  align-items: center;\n  flex: 0 0 32px;\n  width: 32px;\n  min-width: 32px;\n  height: 32px;\n  min-height: 32px !important;\n  padding: 0 !important;\n  border: 0 !important;\n  background: transparent !important;\n  color: var(--dsw-alias-label-secondary) !important;\n  border-radius: 6px;\n  line-height: 1;\n}\n.script-workbench .script-tag-remove:hover:enabled {\n  background: var(--dsw-alias-bg-layer-2) !important;\n  color: var(--dsw-alias-label-primary) !important;\n}\n.script-workbench .script-tag-recommendations {\n  margin: 8px 0;\n  font-size: .86em;\n}\n.script-workbench .script-tag-recommendations .script-tag-list {\n  gap: 5px;\n  margin: 6px 0;\n}\n.script-workbench .script-tag-recommendations button,\n.script-workbench .script-tag-list > button[aria-pressed] {\n  min-height: 32px !important;\n  padding: 4px 8px !important;\n  border-radius: 6px !important;\n  line-height: 1.4 !important;\n  font-size: .9em !important;\n  background: var(--dsw-alias-bg-layer-1) !important;\n  color: var(--dsw-alias-label-secondary) !important;\n  border-color: var(--dsw-alias-border-l2) !important;\n}\n.script-workbench .script-tag-recommendations button[aria-pressed=true],\n.script-workbench .script-tag-list > button[aria-pressed=true] {\n  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 13%, var(--dsw-alias-bg-layer-1)) !important;\n  color: var(--dsw-alias-label-primary) !important;\n  border-color: var(--dsw-alias-brand-primary) !important;\n  font-weight: 600 !important;\n}\n.script-workbench .script-tag-add {\n  display: flex;\n  gap: 7px;\n  margin: 8px 0 4px;\n}\n.script-workbench .script-tag-add input {\n  font: inherit;\n  min-width: 0;\n  flex: 1 1 100px;\n  border: 1px solid var(--dsw-alias-border-l2);\n  border-radius: 7px;\n  background: var(--dsw-alias-bg-base);\n  color: inherit;\n  padding: 7px 9px;\n}\n.script-workbench .script-tag-add > button {\n  min-height: 34px !important;\n  padding: 5px 10px !important;\n  flex: 0 0 auto;\n  font-size: .9em !important;\n}\n.script-workbench .script-tag-feedback {\n  min-height: 1.5em;\n  margin: 3px 0 6px;\n  color: var(--dsw-alias-label-secondary);\n  font-size: .85em;\n  line-height: 1.5;\n  overflow-wrap: anywhere;\n}\n.script-workbench .script-tag-feedback[role=alert] {\n  color: var(--dsw-alias-state-error-primary);\n}\n.script-workbench .script-tag-favorite {\n  display: inline-flex;\n  align-items: center;\n  max-width: 100%;\n  gap: 2px;\n}\n.script-workbench .script-tag-favorite > button {\n  min-height: 32px !important;\n  padding: 4px 8px !important;\n  font-size: .9em !important;\n}\n.script-workbench .script-tag-favorites {\n  margin-top: 9px;\n  font-size: .9em;\n}\n.script-workbench .script-tag-favorites > summary {\n  color: var(--dsw-alias-label-secondary);\n  padding-block: 4px;\n}\n.script-workbench .script-tag-favorites[open] > summary {\n  margin-bottom: 8px;\n}\n.script-workbench .script-check-groups {\n  display: grid;\n  gap: 8px;\n  margin-block: 10px;\n}\n.script-workbench .script-check-groups details {\n  border: 1px solid var(--dsw-alias-border-l2);\n  border-radius: 7px;\n  padding: 8px 10px;\n  background: var(--dsw-alias-bg-layer-2);\n}\n.script-workbench .script-check-groups summary {\n  font-size: .9em;\n}\n.script-workbench .script-check-groups :is(ul, ol) {\n  padding-inline-start: 20px;\n  margin: 8px 0 0;\n  font-size: .9em;\n}\n.script-workbench .script-check-groups li + li {\n  margin-top: 6px;\n}\n.script-workbench .script-report-context {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 6px 12px;\n  margin-block: 10px;\n  padding: 9px 11px;\n  border: 1px solid var(--dsw-alias-border-l2);\n  border-radius: 7px;\n  color: var(--dsw-alias-label-secondary);\n  background: var(--dsw-alias-bg-layer-2);\n  font-size: .88em;\n}\n.script-workbench .script-report-context strong {\n  color: var(--dsw-alias-label-primary);\n}\n.script-workbench .script-report-body {\n  max-height: 60vh;\n  overflow: auto;\n  padding: 14px;\n  margin: 10px 0;\n  border-radius: 7px;\n  background: var(--dsw-alias-bg-layer-2);\n  line-height: 1.85;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n}\n@media (max-width: 960px) {\n  .script-workbench .script-brief-grid,\n  .script-workbench .script-result-grid {\n    grid-template-columns: minmax(0, 1fr);\n  }\n  .script-workbench .script-inspector {\n    display: grid;\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n    gap: 12px;\n  }\n  .script-workbench .script-inspector > section:first-child {\n    grid-column: 1 / -1;\n  }\n  .script-workbench .script-inspector > section {\n    margin-bottom: 0 !important;\n  }\n  .script-workbench .script-reading > .script-inspector {\n    display: none;\n  }\n}\n@media (max-width: 560px) {\n  .script-workbench {\n    padding: 12px 10px 28px;\n    scroll-padding-block-end: 150px;\n  }\n  .script-workbench .script-header {\n    gap: 8px;\n    align-items: flex-start;\n  }\n  .script-workbench .script-header h1 {\n    font-size: 1.5em;\n  }\n  .script-workbench .script-eyebrow {\n    font-size: .62em;\n  }\n  .script-workbench .script-form-grid,\n  .script-workbench .script-inspector,\n  .script-workbench .script-feedback {\n    grid-template-columns: minmax(0, 1fr);\n  }\n  .script-workbench .script-projectbar {\n    padding: 10px;\n    gap: 8px;\n  }\n  .script-workbench .script-projectbar > label {\n    width: 100%;\n  }\n  .script-workbench .script-projectbar select {\n    max-width: 100% !important;\n  }\n  .script-workbench .script-projectbar .script-project-title {\n    flex-basis: 100%;\n    min-width: 0;\n  }\n  .script-workbench .script-document {\n    padding: 14px 12px;\n    min-height: 300px;\n  }\n  .script-workbench .script-tabs {\n    width: 100%;\n    gap: 3px;\n  }\n  .script-workbench .script-tabs button {\n    flex: 1 1 40%;\n    padding: 7px 6px !important;\n  }\n  .script-workbench .script-settings > summary {\n    padding: 6px 8px;\n  }\n  .script-workbench .script-settings[open] > div {\n    right: 0;\n    width: min(380px, calc(100vw - 32px));\n  }\n  .script-workbench .script-more[open] > div {\n    left: auto;\n    right: 0;\n    width: min(320px, 75vw);\n  }\n  .script-workbench .script-actionbar > span {\n    width: 100%;\n  }\n  .script-workbench .script-search input {\n    flex-basis: 100%;\n    min-width: 0;\n  }\n  .script-workbench .script-next-step {\n    align-items: flex-start;\n  }\n  .script-workbench .script-brief-submit {\n    padding-block: 10px;\n    gap: 6px;\n  }\n  .script-workbench .script-brief-submit > button {\n    flex: 1 1 140px;\n  }\n  .script-workbench .script-brief-submit > .script-muted {\n    flex-basis: 100%;\n  }\n  .script-workbench .script-tag-add {\n    flex-wrap: wrap;\n  }\n  .script-workbench .script-tag-add input {\n    flex-basis: 100%;\n  }\n  .script-workbench .script-document-tools > button {\n    flex: 1 1 90px;\n  }\n  .script-workbench .script-roles li {\n    grid-template-columns: minmax(50px, auto) minmax(18px, 1fr) minmax(0, auto);\n    font-size: .9em;\n    gap: 6px;\n  }\n  .script-workbench .script-report-body {\n    padding: 11px;\n  }\n}\n@media (prefers-reduced-motion: reduce) {\n  .script-workbench * {\n    transition: none !important;\n    scroll-behavior: auto !important;\n  }\n}\n";
     const IO = (() => {
 const utf8 = new TextEncoder();
 const decode = new TextDecoder();
@@ -849,7 +881,7 @@ async function readDocxText(input, inflate) {
 
 return {buildDocxBytes,readDocxText};
 })();
-    const CURRENT_VERSION = '2.10.0';
+    const CURRENT_VERSION = '2.10.2';
 const REPOSITORY = 'OuyangLing1999/Dsh-scriptForGin';
 
 function compareVersions(left, right) {
@@ -1048,7 +1080,7 @@ const HUMANIZE_PATTERNS = [
         color: primary ? "var(--dsw-alias-bg-base)" : T.text,
         cursor: disabled ? "wait" : "pointer",
         opacity: disabled ? 0.55 : 1
-      }, ...props }, children);
+      }, "data-primary": primary ? "true" : void 0, ...props }, children);
     }
     function Field({ label, value = "", onChange, rows, placeholder, ...props }) {
       return h(
@@ -1074,40 +1106,51 @@ const HUMANIZE_PATTERNS = [
         placeholder: "例如：50岁以上中老年人，城市退休人群"
       });
     }
-    function TagEditor({ label, field, tags, presets, favorites, onChange, onSave, onForget, onNotice }) {
+    function TagEditor({ label, field, tags, presets, favorites, onChange, onSave, onForget }) {
       const [draft, setDraft] = useState("");
+      const [feedback, setFeedback] = useState("");
       const add = (value) => {
         const raw = value.split(/[,，、;；\n]+/).map((item) => item.trim()).filter(Boolean);
-        if (raw.some((tag) => tag.length > 40) || WB.normalizeTags([...tags, ...raw]).length < new Set([...tags, ...raw].map((tag) => tag.toLowerCase())).size) {
-          onNotice("每组最多12个标签，每个标签最多40字；超出部分未添加。");
-        }
-        onChange(WB.normalizeTags([...tags, ...raw.filter((tag) => tag.length <= 40)]));
-        setDraft("");
+        if (!raw.length) return;
+        const next = WB.normalizeTags([...tags, ...raw.filter((tag) => tag.length <= 40)]);
+        const overflow = raw.some((tag) => tag.length > 40) || new Set([...tags, ...raw].map((tag) => tag.toLowerCase())).size > 12;
+        const changed = next.length !== tags.length;
+        setFeedback(overflow ? "每组最多12个标签，每个标签最多40字；超出部分未添加。" : changed ? "已添加 " + (next.length - tags.length) + " 个标签" : "该标签已选择，无需重复添加。");
+        if (changed) onChange(next);
+        if (!overflow) setDraft("");
+      };
+      const remove = (tag) => {
+        onChange(tags.filter((item) => item !== tag));
+        setFeedback("已移除：" + tag);
       };
       return h(
         "section",
         { className: "script-tag-editor", "aria-label": label },
-        h("strong", null, label),
+        h("div", { className: "script-section-heading" }, h("strong", null, label), h("small", { className: "script-muted" }, tags.length + " / 12")),
         h(
           "div",
           { className: "script-tag-list" },
-          ...tags.map((tag) => h(Button, { key: tag, className: "script-tag-selected", "aria-label": "移除" + label + "：" + tag, onClick: () => onChange(tags.filter((item) => item !== tag)) }, tag + " ×")),
-          !tags.length ? h("span", { className: "script-muted" }, "可留空，按本次选题创作") : null
+          ...tags.map((tag) => h("span", { key: tag, className: "script-tag-selected" }, h("span", null, tag), h(Button, { className: "script-tag-remove", "aria-label": "移除" + label + "：" + tag, title: "移除此标签", onClick: () => remove(tag) }, "×"))),
+          !tags.length ? h("span", { className: "script-muted" }, "未设标签，按选题创作") : null
         ),
-        h("div", { className: "script-tag-add" }, h("input", { "aria-label": "自定义" + label, value: draft, maxLength: 300, placeholder: "输入标签，回车添加", onChange: (event) => setDraft(event.target.value), onKeyDown: (event) => {
+        h("div", { className: "script-tag-add" }, h("input", { "aria-label": "自定义" + label, "aria-describedby": field + "-feedback", value: draft, maxLength: 300, placeholder: "输入标签，回车添加", onChange: (event) => {
+          setDraft(event.target.value);
+          setFeedback("");
+        }, onKeyDown: (event) => {
           if (event.key === "Enter" && !event.nativeEvent?.isComposing) {
             event.preventDefault();
             add(draft);
           }
-        } }), h(Button, { disabled: !draft.trim(), onClick: () => add(draft) }, "添加" + label)),
-        h("div", { className: "script-tag-list" }, h("small", null, "推荐："), ...presets.map((tag) => h(Button, { key: tag, "aria-pressed": tags.includes(tag), onClick: () => tags.includes(tag) ? onChange(tags.filter((item) => item !== tag)) : add(tag) }, tag))),
+        } }), h(Button, { "aria-label": "添加" + label, disabled: !draft.trim(), onClick: () => add(draft) }, "添加")),
+        feedback ? h("small", { id: field + "-feedback", className: "script-tag-feedback", role: "status" }, feedback) : null,
+        h("div", { className: "script-tag-list script-tag-recommendations" }, h("small", null, "推荐"), ...presets.map((tag) => h(Button, { key: tag, "aria-pressed": tags.includes(tag), onClick: () => tags.includes(tag) ? remove(tag) : add(tag) }, tag))),
         h(
           "details",
           { className: "script-tag-favorites" },
           h("summary", null, "我的常用" + label + "（当前浏览器）"),
           h(Button, { disabled: !tags.length, onClick: () => onSave(field, tags) }, "将已选" + label + "存为常用"),
-          !favorites.length ? h("p", { className: "script-muted" }, "保存后可在其他项目中点选复用。") : null,
-          h("div", { className: "script-tag-list" }, ...favorites.map((tag) => h("span", { key: tag, className: "script-tag-favorite" }, h(Button, { onClick: () => add(tag) }, tag), h(Button, { "aria-label": "删除常用" + label + "：" + tag, onClick: () => onForget(field, tag) }, "×"))))
+          !favorites.length ? h("p", { className: "script-muted" }, "保存后可跨项目点选。") : null,
+          h("div", { className: "script-tag-list" }, ...favorites.map((tag) => h("span", { key: tag, className: "script-tag-favorite" }, h(Button, { onClick: () => add(tag) }, tag), h(Button, { className: "script-tag-remove", "aria-label": "删除常用" + label + "：" + tag, onClick: () => onForget(field, tag) }, "×"))))
         )
       );
     }
@@ -1197,11 +1240,11 @@ const HUMANIZE_PATTERNS = [
           "section",
           { style: card, className: "script-creative-profile" },
           h("h2", null, "创作定位"),
-          h("p", { className: "script-muted" }, "受众、题材与风格分别设置。标签指导创作，本次选题和明确修改要求优先。"),
+          h("p", { className: "script-profile-summary script-muted" }, "项目默认定位 · 本次明确要求优先"),
           h(AudienceEditor, { key: project.id, value: profile.audience, onChange: (audience) => changeProfile({ audience }) }),
-          h("p", { className: "script-muted" }, "内容形式：" + (project.mode.startsWith("live") ? "直播连麦 · 角色对白与话轮交接" : "短视频拍摄稿 · 场次、镜头与时长") + "。工作模式决定操作，题材标签决定写什么。"),
+          h("p", { className: "script-profile-summary script-muted" }, "交付形式：" + (project.mode.startsWith("live") ? "直播连麦" : "短视频拍摄稿")),
           ...[["themeTags", "题材标签", topicPresets], ["styleTags", "风格标签", stylePresets]].map(([field, label, presets]) => h(TagEditor, { key: project.id + field, field, label, presets, tags: profile[field], favorites: favoriteTags[field], onChange: (tags) => changeProfile({ [field]: tags }), onSave: saveFavoriteTags, onForget: (key, tag) => saveFavoriteTags(key, tag, true), onNotice: setNotice })),
-          h("small", { className: "script-muted" }, "每组最多12个标签，每个最多40字。样稿库标签只用于筛选参考，与这里分别保存。")
+          h("small", { className: "script-muted" }, "每组最多12个，每个40字；可留空。")
         );
       }
       function changeBrief(key, value) {
@@ -1602,7 +1645,7 @@ const HUMANIZE_PATTERNS = [
             null,
             h(
               "section",
-              { style: card },
+              { style: card, className: "script-brief-main" },
               h("div", { className: "script-section-heading" }, h("h2", null, "创作简报"), h("span", { className: "script-badge" }, "编导主导 · AI 辅助")),
               h(
                 "div",
@@ -1616,7 +1659,7 @@ const HUMANIZE_PATTERNS = [
               h(Field, { label: "选题 / 本集任务", value: project.topic, onChange: (topic) => {
                 change({ topic });
                 setFieldErrors((old) => ({ ...old, topic: "" }));
-              }, placeholder: "选题、核心矛盾或本次编导意图" }),
+              }, placeholder: "这一稿要讲什么，或要解决什么问题" }),
               err("topic"),
               h("div", { style: { margin: "-2px 0 10px" } }, h(Button, { onClick: () => {
                 const themes = WB.resolveCreativeProfile(project).themeTags.join("、");
@@ -1630,15 +1673,15 @@ const HUMANIZE_PATTERNS = [
               err("draft"),
               project.mode === "duan-ba" ? h("div", null, h(Field, { label: "视频路径（DSH 所在电脑）", value: project.videoPath, onChange: (videoPath) => change({ videoPath }) }), h(Field, { label: "字幕 / 时间轴证据", value: project.videoEvidence, rows: 5, onChange: (videoEvidence) => change({ videoEvidence }), placeholder: "时间段、画面 / 音轨依据、待复核事实" }), err("video")) : null,
               h(Field, { label: "本次指令 / 调整方向", value: project.notes, rows: 4, onChange: (notes) => change({ notes }), placeholder: "例如：保留结尾，只调整前半段冲突升级；对白更克制。" }),
-              h("div", { className: "script-actionbar" }, h(Button, { primary: true, disabled: busy || !!project.pending, onClick: () => submitTask(phase) }, "生成" + { idea: "思路", outline: "大纲", script: "剧本" }[project.deliverable]), h("span", { className: "script-muted" }, "按当前简报执行，结果保留为新版本"))
+              h("div", { className: "script-actionbar script-brief-submit" }, h(Button, { primary: true, disabled: busy || !!project.pending, onClick: () => submitTask(phase) }, "生成" + { idea: "思路", outline: "大纲", script: "剧本" }[project.deliverable]), h("span", { className: "script-muted" }, "按当前简报执行，结果保留为新版本"))
             ),
             h(
-              "section",
-              { style: card, onDragOver: (e) => e.preventDefault(), onDrop: (e) => {
+              "details",
+              { className: "script-brief-secondary", style: card, onDragOver: (e) => e.preventDefault(), onDrop: (e) => {
                 e.preventDefault();
                 void importFiles(e.dataTransfer.files);
               } },
-              h("h2", null, "素材收件箱"),
+              h("summary", null, "素材收件箱", h("small", { className: "script-muted" }, " · 导入文字、视频或音频")),
               h("p", { className: "script-muted" }, "文字先预览，再选择载入方式；视频和音频提交时上传。"),
               h("input", { "aria-label": "导入创作素材", type: "file", multiple: true, accept: ".txt,.md,.docx,.srt,.vtt,.mp4,.mov,.mkv,.webm,.wav,.mp3", onChange: (e) => {
                 void importFiles(e.target.files);
@@ -1653,9 +1696,10 @@ const HUMANIZE_PATTERNS = [
             null,
             creativeProfileView(),
             h(
-              "section",
-              { style: card },
-              h("h2", null, "创作约束"),
+              "details",
+              { style: card, className: "script-constraint-details" },
+              h("summary", null, "创作约束"),
+              h("p", { className: "script-muted" }, "选填；已填内容始终参与生成和返修。"),
               ...[["relationship", "人物关系 / 参与者"], ["conflict", "核心问题 / 冲突"], ["goals", "表达目标 / 角色诉求"], ["ending", "收束 / 结尾方向"], ["lockedFacts", "锁定事实 / 情节"], ["protectedLines", "保护台词（逐字保留）"]].map(([key, label]) => h(Field, { key, label, rows: ["lockedFacts", "protectedLines"].includes(key) ? 3 : 2, value: project.brief[key], onChange: (value) => changeBrief(key, value) })),
               h("label", null, "优化力度", h("select", { style: input, value: project.intensity, onChange: (e) => change({ intensity: e.target.value }) }, h("option", { value: "light" }, "轻修 · 保留顺序与情节"), h("option", { value: "structure" }, "结构调整 · 保留核心因果"), h("option", { value: "deep" }, "重构 · 保留锁定项"))),
               h("label", { style: { display: "block", marginTop: 8 } }, h("input", { type: "checkbox", checked: project.autoRepair, onChange: (e) => change({ autoRepair: e.target.checked }) }), " 格式问题自动返修一次（额外调用 AI）")
@@ -1790,6 +1834,11 @@ const HUMANIZE_PATTERNS = [
         const pendingText = project.pending && live?.taskId === project.pending.taskId ? live.text : "";
         const searchMatches = searchQuery.trim() ? AN.findMatches(output, searchQuery.trim()) : { matches: [], count: 0 };
         const roleStats = kind === "script" && output ? AN.analyzeRoles(output, mode) : null;
+        const viewedIndex = chosen ? project.versions.findIndex((v) => v.id === chosen.id) + 1 : 0;
+        const parentIndex = chosen?.sourceVersionId ? project.versions.findIndex((v) => v.id === chosen.sourceVersionId) + 1 : 0;
+        const effectiveProfile = WB.resolveCreativeProfile(chosen && !useProjectProfile ? chosen : project);
+        const checkGroups = AN.groupCheckIssues(check.issues);
+        const visibleIssueCount = checkGroups.reduce((sum, group) => sum + group.issues.length, 0);
         const renderHighlighted = (text) => {
           if (!searchMatches.matches.length || !text) return text;
           const nodes = [];
@@ -1809,7 +1858,6 @@ const HUMANIZE_PATTERNS = [
             "section",
             { style: card },
             h("div", { className: "script-section-heading" }, h("h2", null, "稿件工作区"), h(Button, { onClick: () => setReading(!reading) }, reading ? "退出专注" : "专注阅读")),
-            output ? h("div", { className: "script-next-step" }, h("span", null, kind === "idea" ? "下一步：优化思路，或扩成大纲" : kind === "outline" ? "下一步：确认大纲，或扩成剧本" : "下一步：定向返修、AI 审稿或导出 Word"), kind === "idea" ? h(Button, { primary: true, disabled: busy || !!project.pending, onClick: () => submitTask("outline", "基于此思路生成结构大纲。", 0, { ...project, draft: output, sourceVersion: chosen, deliverable: "outline" }) }, "扩成大纲") : kind === "outline" ? h(Button, { primary: true, disabled: busy || !!project.pending, onClick: () => submitTask("full", "基于当前稿件扩写完整剧本，保留已确定事实与结尾。", 0, { ...project, draft: output, sourceVersion: chosen, deliverable: "script" }) }, "扩成剧本") : h(Button, { primary: true, onClick: () => download(project.title + ".docx", IO.buildDocxBytes(output), "application/vnd.openxmlformats-officedocument.wordprocessingml.document") }, "导出 Word")) : null,
             output ? h("div", { className: "script-search" }, h("input", { "aria-label": "搜索稿件", type: "search", style: input, value: searchQuery, placeholder: "在稿件中搜索…", onChange: (e) => {
               setSearchQuery(e.target.value);
               setSearchIndex(0);
@@ -1821,7 +1869,7 @@ const HUMANIZE_PATTERNS = [
               "div",
               { style: row },
               h("span", { className: "script-badge" }, { idea: "思路", outline: "大纲", script: "剧本" }[kind]),
-              chosen ? h("span", { className: "script-muted", title: chosen.id === project.currentVersionId ? "已采用稿：返修、对照以它为准，新生成结果不会覆盖它。" : "候选稿：刚生成或修改的新版本，采用后设为默认工作稿。" }, chosen.id === project.currentVersionId ? "已采用稿" : "候选稿 · 采用后设为默认工作稿") : null,
+              chosen ? h("span", { className: "script-muted", title: chosen.id === project.currentVersionId ? "已采用稿：默认工作稿；手动切换版本后，返修以当前浏览稿为准。" : "候选稿：刚生成或修改的新版本，采用后设为默认工作稿。" }, chosen.id === project.currentVersionId ? "已采用稿" : "候选稿 · 采用后设为默认工作稿") : null,
               chosen && chosen.id !== project.currentVersionId ? h(Button, { disabled: !!project.pending, onClick: () => {
                 change({ currentVersionId: chosen.id });
                 setNotice("已采用当前稿，历史版本保留。");
@@ -1843,7 +1891,7 @@ const HUMANIZE_PATTERNS = [
             } }, pendingText || renderHighlighted(output) || "载入原稿，或从创作简报生成。你可以直接编辑、审稿、润色或定向返修。"),
             output ? h(
               "div",
-              { className: "script-actionbar" },
+              { className: "script-actionbar script-document-tools", "aria-label": "稿件操作" },
               h(Button, { onClick: async () => {
                 try {
                   await navigator.clipboard.writeText(output);
@@ -1882,13 +1930,20 @@ const HUMANIZE_PATTERNS = [
               "section",
               { style: card },
               h("h2", null, "编导指令"),
-              h("p", { className: "script-muted" }, "基于当前浏览稿生成新版本，锁定项始终保留。"),
-              chosen ? h("div", { className: "script-source-profile" }, h("small", null, "来源受众：" + WB.resolveCreativeProfile(chosen).audience + "；题材：" + (WB.resolveCreativeProfile(chosen).themeTags.join("、") || "开放") + "；风格：" + (WB.resolveCreativeProfile(chosen).styleTags.join("、") || "按稿件")), h("label", null, h("input", { type: "checkbox", checked: useProjectProfile, onChange: (event) => setUseProjectProfile(event.target.checked) }), " 本次改用当前项目创作定位")) : null,
+              h(
+                "div",
+                { className: "script-object-context", role: "group", "aria-label": "本次操作对象" },
+                h("strong", null, chosen ? "正在修改：v" + viewedIndex + " · " + (chosen.id === project.currentVersionId ? "已采用稿" : "候选稿") : "尚未载入稿件"),
+                chosen ? h("small", null, parentIndex ? "来源：v" + parentIndex + "；操作结果保存为新版本。" : "操作结果保存为新版本，原稿保留。") : h("small", null, "请先载入原稿或生成一份稿件。"),
+                h("p", null, "本次定位：" + (chosen && !useProjectProfile ? "沿用来源稿" : "当前项目") + " · " + effectiveProfile.audience),
+                h("small", null, "题材：" + (effectiveProfile.themeTags.join("、") || "开放") + "；风格：" + (effectiveProfile.styleTags.join("、") || "按稿件")),
+                chosen ? h("label", { className: "script-source-profile" }, h("input", { type: "checkbox", checked: useProjectProfile, onChange: (event) => setUseProjectProfile(event.target.checked) }), " 本次改用当前项目创作定位") : null
+              ),
               selection ? h("div", { className: "script-selection" }, h("strong", null, "已选文字"), h("p", null, selection.slice(0, 200) + (selection.length > 200 ? "…" : "")), h(Button, { onClick: () => setSelection("") }, "清除选择")) : null,
               h(Field, { label: "修改意图", value: revision, rows: 5, onChange: setRevision, placeholder: "例如：第3段情绪推进太快，补一层犹豫；保留结尾和金额。" }),
               segments.length ? h("label", null, "返修范围", h("select", { style: input, value: reviseSegment, onChange: (e) => setReviseSegment(e.target.value) }, h("option", { value: "" }, "全文"), ...segments.map((match, i) => h("option", { key: i, value: String(i + 1) }, "第" + (i + 1) + (mode.startsWith("live") ? "段 · " : "场 · ") + match[0])))) : null,
               h(Button, { primary: true, disabled: busy || !!project.pending || !output || !revision.trim(), onClick: () => submitTask(phase, [reviseSegment ? "仅修改第" + reviseSegment + (mode.startsWith("live") ? "段话轮" : "场") + "，其余保持原样。" : "", selection ? "仅修改以下选中文字，返回包含修改的完整稿件，其他内容保持原样：\n" + selection : "", revision].filter(Boolean).join("\n")) }, kind === "script" ? "定向返修" : "优化" + { idea: "思路", outline: "大纲" }[kind]),
-              h("div", { style: { ...row, marginTop: 12 } }, h(Button, { disabled: busy || !!project.pending || !output, onClick: () => submitTask("polish", "仅润色当前稿件，保持其内容类型与结构。") }, "文字润色"), h(Button, { disabled: busy || !!project.pending || !output, onClick: () => submitTask("audit", "按位置、问题、依据、修复建议审稿；结合目标受众、题材和风格，核对事实依据、信息递进、对白与衔接；仅在剧情需要时评估人物动机和情绪。") }, "AI 审稿")),
+              h("div", { className: "script-inspector-tools", style: { ...row, marginTop: 12 } }, h(Button, { disabled: busy || !!project.pending || !output, onClick: () => submitTask("polish", "仅润色当前稿件，保持其内容类型与结构。") }, "文字润色"), h(Button, { disabled: busy || !!project.pending || !output, onClick: () => submitTask("audit", "按位置、问题、依据、修复建议审稿；结合目标受众、题材和风格，核对事实依据、信息递进、对白与衔接；仅在剧情需要时评估人物动机和情绪。") }, "AI 审稿")),
               kind === "idea" && output ? h("div", { className: "script-actionbar" }, h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask("outline", "基于此思路生成结构大纲。", 0, { ...project, draft: output, sourceVersion: chosen, deliverable: "outline" }) }, "扩成大纲")) : null,
               ["idea", "outline"].includes(kind) && output ? h("div", { className: "script-actionbar" }, h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask("full", "基于当前稿件扩写完整剧本，保留已确定事实与结尾。", 0, { ...project, draft: output, sourceVersion: chosen, deliverable: "script" }) }, "扩成剧本"), kind === "outline" ? h(Button, { onClick: () => {
                 change({ outline: output });
@@ -1896,9 +1951,35 @@ const HUMANIZE_PATTERNS = [
               } }, "确认大纲") : null) : null
             ),
             roleStats && roleStats.roles.length ? h("section", { style: card }, h("h3", null, "角色台词统计"), h("ul", { className: "script-roles" }, roleStats.roles.map((r) => h("li", { key: r.name }, h("span", { className: "script-role-name" }, r.name), h("span", { className: "script-role-bar" }, h("i", { style: { width: Math.round(r.share * 100) + "%" } })), h("span", { className: "script-muted" }, r.turns + " 段 · " + r.chars + " 字 · " + Math.round(r.share * 100) + "%"))))) : null,
-            output && kind === "script" ? h("section", { style: card }, h("h3", null, "程序检查"), h("p", null, check.ok ? "格式检查通过" : check.issues.length + " 项待核对"), h("ul", null, check.issues.map((issue, i) => h("li", { key: i }, (issue.segment ? "第" + issue.segment + "段：" : issue.scene ? "第" + issue.scene + "场：" : "") + issue.message))), check.issues.length ? h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask(phase, "仅修复以下问题，保持其余内容：\n" + check.issues.map((issue) => issue.message).join("\n")) }, "修复检查问题") : null) : null,
+            output && kind === "script" ? h(
+              "section",
+              { style: card, "aria-label": "程序检查结果" },
+              h("h3", null, "程序检查"),
+              h("p", { className: check.ok ? "script-muted" : "" }, check.ok ? "格式检查通过" : visibleIssueCount + " 项待核对 · 按位置排列"),
+              h(
+                "div",
+                { className: "script-check-groups" },
+                ...checkGroups.map((group) => h(
+                  "details",
+                  { key: group.key, open: true },
+                  h("summary", null, group.label + " · " + group.issues.length + "项"),
+                  h(
+                    "ul",
+                    null,
+                    ...group.issues.map((issue, i) => h(
+                      "li",
+                      { key: i },
+                      h("span", null, issue.message),
+                      issue.role ? h("small", { className: "script-muted" }, "角色：" + issue.role) : null,
+                      issue.excerpt ? h("blockquote", null, issue.excerpt) : null
+                    ))
+                  )
+                ))
+              ),
+              check.issues.length ? h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask(phase, "仅修复以下问题，保持其余内容：\n" + check.issues.map((issue) => issue.message).join("\n")) }, "修复检查问题") : null
+            ) : null,
             humanizeCheck ? h("section", { style: card }, h("h3", null, "润色自检"), h("p", null, humanizeCheck.ok ? "未命中预设表达" : humanizeCheck.issues.map((issue) => issue.message).join("；"))) : null,
-            reports.length ? h("section", { style: card }, h("h3", null, "本稿审稿记录"), h("p", null, reports.length + " 份报告"), h("div", { style: row }, h(Button, { onClick: () => setTab("reports") }, "查看审稿记录"), h(Button, { primary: true, disabled: busy || !!project.pending, onClick: () => {
+            reports.length ? h("section", { style: card }, h("h3", null, "本稿审稿记录"), h("p", null, reports.length + " 份报告"), h("div", { style: row }, h(Button, { onClick: () => setTab("reports") }, "查看审稿记录"), h(Button, { disabled: busy || !!project.pending, onClick: () => {
               const latestReport = reports.at(-1);
               setRevision("参考以下审稿意见，修复明确问题，保持已正确部分：\n" + latestReport.text);
             } }, "按最新意见返修"))) : null,
@@ -1912,11 +1993,23 @@ const HUMANIZE_PATTERNS = [
           { style: card },
           h("h2", null, "审稿与提取记录"),
           h("p", { className: "script-muted" }, "报告按来源版本归档，不替换稿件。"),
-          ...(project.reports || []).slice().reverse().map((report) => h("details", { key: report.id, style: { ...card, background: T.layer2 }, open: true, title: report.sourceVersionId ? "来源版本：这份报告是在该稿基础上生成的，审稿不进入正文。" : "" }, h("summary", null, new Date(report.createdAt).toLocaleString() + " · " + (report.sourceVersionId ? "来源 v" + (project.versions.findIndex((v) => v.id === report.sourceVersionId) + 1) : "历史报告")), h("pre", { className: "script-material-text" }, report.text), h(Button, { disabled: busy || !!project.pending || !project.versions.some((v) => v.id === report.sourceVersionId), onClick: () => {
-            setSelectedVersion(report.sourceVersionId);
-            setRevision("参考以下审稿意见，修复明确问题，保持已正确部分：\n" + report.text);
-            setTab("result");
-          } }, "以来源稿按意见返修"))),
+          ...(project.reports || []).slice().reverse().map((report, index) => {
+            const sourceIndex = project.versions.findIndex((v) => v.id === report.sourceVersionId);
+            const source = sourceIndex >= 0 ? project.versions[sourceIndex] : null;
+            const sourceLabel = source ? "来源 v" + (sourceIndex + 1) + " · " + (source.id === project.currentVersionId ? "已采用稿" : "候选稿") : report.sourceVersionId ? "来源稿已不存在" : "历史报告 · 来源未记录";
+            return h(
+              "details",
+              { key: report.id, style: { ...card, background: T.layer2 }, open: index === 0, title: "来源版本：报告单独归档，原稿保留。" },
+              h("summary", null, new Date(report.createdAt).toLocaleString() + " · " + sourceLabel),
+              h("p", { className: "script-report-context" }, sourceLabel + "；以下为报告原文。"),
+              h("pre", { className: "script-material-text script-report-body" }, report.text),
+              h(Button, { disabled: busy || !!project.pending || !source, onClick: () => {
+                setSelectedVersion(report.sourceVersionId);
+                setRevision("参考以下审稿意见，修复明确问题，保持已正确部分：\n" + report.text);
+                setTab("result");
+              } }, "以来源稿按意见返修")
+            );
+          }),
           !(project.reports || []).length ? h("p", null, "暂无报告。可在稿件工作区审稿或提取人物卡。") : null
         );
       }
@@ -1928,6 +2021,7 @@ const HUMANIZE_PATTERNS = [
           "header",
           { className: "script-header" },
           h("div", null, h("p", { className: "script-eyebrow" }, "SCRIPT WORKBENCH"), h("h1", null, "剧本工作台"), h("p", { className: "script-muted" }, "选题 · 结构 · 对白 · 返修")),
+          h(Button, { onClick: () => ctx.layout.selectPanel(null), title: "返回DSH当前会话，项目保留" }, "返回会话"),
           h("details", { className: "script-settings" }, h("summary", null, "工作台设置"), h(
             "div",
             { style: card },
@@ -1976,8 +2070,13 @@ const HUMANIZE_PATTERNS = [
           { className: "script-projectbar" },
           h("label", null, "项目", h("select", { "aria-label": "切换项目", style: { ...input, margin: 0, maxWidth: 230 }, value: project.id, onChange: (e) => setStore((current) => ({ ...current, activeId: e.target.value })) }, ...store.projects.map((p) => h("option", { key: p.id, value: p.id }, p.title + (p.pending ? " · 运行中" : ""))))),
           h("label", { className: "script-project-title" }, "名称", h("input", { "aria-label": "项目名称", style: { ...input, margin: 0 }, value: project.title, onChange: (e) => change({ title: e.target.value }) })),
-          h(Button, { onClick: addProject }, "新建项目"),
-          h("small", { role: "status", className: "script-save" }, store.blocked ? store.error || "保存暂停，请处理存档冲突" : saveStatus || "读取草稿…")
+          h(Button, { onClick: addProject }, "新建项目")
+        ),
+        h(
+          "div",
+          { className: "script-feedback" },
+          h("div", { role: "status", "aria-label": "项目保存状态", className: "script-save-feedback", "data-error": store.blocked || /暂停|失败/.test(saveStatus) ? "true" : void 0 }, h("strong", null, "项目保存"), h("span", null, store.blocked ? store.error || "保存暂停，请处理存档冲突" : saveStatus || "读取草稿…")),
+          h("div", { role: "status", "aria-label": "AI任务状态", className: "script-ai-feedback" }, h("strong", null, "AI任务"), h("span", null, busy ? taskStatus || "准备提交…" : project.pending ? "运行中 · " + ({ idea: "生成思路", "idea-opt": "优化思路", outline: "生成大纲", "outline-opt": "优化大纲", full: "生成剧本", revision: "定向返修", polish: "文字润色", audit: "审稿 / 提取", persona: "人设处理" }[project.pending.phase] || "处理中") : project.retry ? "上次未完成 · 可重试" : "就绪"))
         ),
         store.conflict ? h("section", { style: card }, h("p", null, "其他标签页已更新项目，本页内容保留。"), h(Button, { onClick: () => {
           const disk = loadCatalog();
@@ -2012,8 +2111,8 @@ const HUMANIZE_PATTERNS = [
           h("label", null, "载入方式", h("select", { style: input, value: importStrategy, onChange: (e) => setImportStrategy(e.target.value) }, h("option", { value: "materials" }, "保存为独立素材（不覆盖原稿）"), h("option", { value: "append" }, "追加到原稿 / 证据"), h("option", { value: "replace" }, "替换原稿 / 证据（所有已选文字合并）"))),
           h("div", { style: row }, h(Button, { primary: true, onClick: applyImport }, "确认导入"), h(Button, { onClick: () => setImportPreview(null) }, "取消"))
         ) : null,
-        notice ? h("div", { role: "status", className: "script-notice" }, notice) : null,
-        busy || project.pending ? h("div", { role: "status", className: "script-taskbar" }, h("span", null, busy ? taskStatus || "准备任务" : "任务运行中 · " + project.pending.phase + " · 已用 " + elapsed + " 秒"), project.pending ? h("div", { style: row }, h(Button, { onClick: () => ctx.uiWorkspace.openSession(project.sessionId) }, "查看任务"), h(Button, { disabled: busy, onClick: async () => {
+        notice ? h("div", { role: "status", "aria-label": "操作反馈", className: "script-notice" }, notice) : null,
+        project.pending ? h("div", { className: "script-taskbar", "aria-label": "任务操作" }, h("span", { "aria-live": "off" }, "已用 " + elapsed + " 秒 · 结果保存为新版本"), project.pending ? h("div", { style: row }, h(Button, { onClick: () => ctx.uiWorkspace.openSession(project.sessionId) }, "查看任务"), h(Button, { disabled: busy, onClick: async () => {
           const id = project.id, pending = project.pending;
           try {
             await ctx.sessions.using(project.sessionId, { source: "controllerOperation" }, async (reference) => {
@@ -2034,10 +2133,35 @@ const HUMANIZE_PATTERNS = [
       return h("svg", { viewBox: "0 0 24 24", width: size, height: size, "aria-hidden": true }, h("rect", { x: 4, y: 2, width: 16, height: 20, rx: 3, fill: "none", stroke: "currentColor", strokeWidth: 1.6 }), ...[7, 12, 17].map((y) => h("path", { key: y, d: "M8 " + y + "h8", stroke: "currentColor", strokeWidth: 1.6 })));
     }
     return {
-      inject: ["slots", "sessions", "uiWorkspace", "fileUpload", "remote", "remote.session"],
+      inject: ["slots", "sessions", "uiWorkspace", "layout", "fileUpload", "remote", "remote.session"],
       apply(ctx) {
         ctx.slots.inject("sidebar.panellist", () => ctx.slots.register({ name: "sidebar.panellist", id: "elderly-script", order: 20, label: "剧本工具" }, Icon));
         ctx.slots.inject("main", () => ctx.slots.register({ name: "main", key: "elderly-script" }, () => h(MainPanel, { ctx })));
+        ctx.slots.inject("conversation.session.header.utilities", () => ctx.slots.register({
+          name: "conversation.session.header.utilities",
+          id: "elderly-script-shortcut",
+          order: 20
+        }, () => h("button", {
+          type: "button",
+          "aria-label": "打开剧本工作台",
+          title: "打开剧本工作台，保留当前会话",
+          onClick: () => ctx.layout.selectPanel("elderly-script"),
+          style: {
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "5px 9px",
+            minHeight: 32,
+            border: "1px solid " + T.border,
+            borderRadius: 8,
+            background: T.layer1,
+            color: T.text,
+            font: "inherit",
+            fontSize: 12,
+            whiteSpace: "nowrap",
+            cursor: "pointer"
+          }
+        }, h(Icon, { size: 16 }), "剧本工作台")));
       }
     };
   }

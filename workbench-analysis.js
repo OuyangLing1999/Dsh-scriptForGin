@@ -60,6 +60,38 @@ export function findMatches(text, query, options = {}) {
   return { matches, count: matches.length };
 }
 
+// Presentation-only grouping: retain original issue objects and their first-seen order.
+export function groupCheckIssues(issues) {
+  if (!Array.isArray(issues)) return [];
+  const groups = new Map();
+  const signatures = new Map();
+  const positiveIndex = value => Number.isSafeInteger(value) && value > 0;
+  for (const issue of issues) {
+    if (!issue || typeof issue !== 'object' || Array.isArray(issue)
+      || typeof issue.message !== 'string' || !issue.message.trim()) continue;
+    const kind = positiveIndex(issue.scene) ? 'scene' : positiveIndex(issue.segment) ? 'segment' : 'global';
+    const position = kind === 'global' ? null : issue[kind];
+    const key = kind === 'global' ? kind : kind + ':' + position;
+    if (!groups.has(key)) {
+      groups.set(key, { key, label: kind === 'scene' ? '第' + position + '场' : kind === 'segment' ? '第' + position + '段话轮' : '全文', issues: [] });
+      signatures.set(key, new Map());
+    }
+    // Nested Maps preserve exact field equality, including missing vs null, without JSON coercion.
+    let seen = signatures.get(key);
+    const fields = [issue.code, issue.message, issue.role, issue.excerpt];
+    for (let index = 0; index < fields.length - 1; index += 1) {
+      const value = fields[index];
+      if (!seen.has(value)) seen.set(value, new Map());
+      seen = seen.get(value);
+    }
+    const excerpt = fields[fields.length - 1];
+    if (seen.has(excerpt)) continue;
+    seen.set(excerpt, true);
+    groups.get(key).issues.push(issue);
+  }
+  return [...groups.values()];
+}
+
 export function buildExampleProject() {
   const versionId = 'example-v1';
   const scriptText = [

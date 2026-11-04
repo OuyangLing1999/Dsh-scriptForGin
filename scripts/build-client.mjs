@@ -23,7 +23,7 @@ const humanizeCore = strip(await readFile(new URL('humanize-core.js', root), 'ut
 const analysis = strip(await readFile(new URL('workbench-analysis.js', root), 'utf8'));
 const css = await readFile(new URL('workbench.css', root), 'utf8');
 let client = await readFile(new URL('client-ui.js', root), 'utf8');
-client = client.replace('/* WORKBENCH_ANALYSIS */', () => 'const AN = (() => {\n' + analysis + '\nreturn {analyzeRoles,findMatches,buildExampleProject};\n})();');
+client = client.replace('/* WORKBENCH_ANALYSIS */', () => 'const AN = (() => {\n' + analysis + '\nreturn {analyzeRoles,findMatches,buildExampleProject,groupCheckIssues};\n})();');
 client = client.replace('/* WORKBENCH_MODEL */', () => 'const WM = (() => {\n' + model + '\nreturn {artifactKind,normalizeProject,resolveVersion,revisionPhase,archiveResult,buildTaskText,forkProject};\n})();');
 client = client.replace('/* UPDATE_INSTALL */', () => 'const UI = (() => {\n' + installer + '\nreturn {resolveInstallTarget,verifyInstalledVersion};\n})();');
 client = client.replace('/* HUMANIZE_CORE */', () => 'const HC = (() => {\n' + humanizeCore + '\nreturn {checkHumanize};\n})();');
