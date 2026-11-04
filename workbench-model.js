@@ -1,4 +1,4 @@
-import { buildPrompt } from './workbench-core.js';
+import { buildPrompt, resolveCreativeProfile } from './workbench-core.js';
 
 const KINDS = new Set(['idea', 'outline', 'script', 'report']);
 const EXTRACT_MARKER = '[DSH_EXTRACT_CHARACTERS]';
@@ -16,6 +16,7 @@ export function artifactKind(version) {
 /** Migrate legacy history without mutating input; adopted manuscript is independent of newest output. */
 export function normalizeProject(project) {
   const result = copy(project || {});
+  result.creativeProfile = resolveCreativeProfile(project);
   const reports = Array.isArray(result.reports) ? result.reports : [];
   const reportIds = new Set(reports.map(item => item.id).filter(Boolean));
   const history = Array.isArray(result.versions) ? result.versions : [];
@@ -90,7 +91,10 @@ export function archiveResult(project, pending, result, metadata = {}) {
   if (error || !text.trim()) {
     return { ...next, pending: null, retry: { phase: pending.phase, instruction: pending.instruction || '',
       repairCount: pending.repairCount || 0, sourceVersionId: pending.sourceVersionId || '',
-      artifactKind: pending.artifactKind, reason: textOf(error?.message || error) || '结果为空' } };
+      artifactKind: pending.artifactKind,
+      ...(pending.request === undefined ? {} : { request: copy(pending.request) }),
+      creativeProfile: resolveCreativeProfile(pending.creativeProfile !== undefined ? pending : pending.sourceVersion || project),
+      reason: textOf(error?.message || error) || '结果为空' } };
   }
   if (pending.phase === 'persona') return { ...next, personaDraft: text.trim(), personaDraftTaskId: taskId, pending: null, retry: null };
   if (!metadata.id || !metadata.createdAt) throw new Error('归档需要 id 与 createdAt');
@@ -103,6 +107,7 @@ export function archiveResult(project, pending, result, metadata = {}) {
     : KINDS.has(pending.artifactKind) && pending.artifactKind !== 'report' ? pending.artifactKind
     : source && artifactKind(source) !== 'report' ? artifactKind(source) : 'script';
   const entry = { id: metadata.id, createdAt: metadata.createdAt, text, phase: pending.phase,
+    creativeProfile: resolveCreativeProfile(pending.creativeProfile !== undefined ? pending : source || project),
     mode: pending.mode || source?.mode || next.mode, taskId, artifactKind: kind, sourceVersionId };
   next.pending = null;
   next.retry = null;
@@ -122,7 +127,11 @@ export function archiveResult(project, pending, result, metadata = {}) {
 
 /** Actual final request, shared by UI and tests. Full skills only apply to full/revision. */
 export function buildTaskText({ project, phase = 'full', draft, instruction = '', taskId, artifactKind: sourceKind,
+  creativeProfile, sourceVersion,
   liveRules = '', shortRules = '', humanizeRules = '' }) {
+  const source = sourceVersion || project.sourceVersion;
+  const profile = creativeProfile !== undefined ? resolveCreativeProfile({ creativeProfile }) : resolveCreativeProfile(source || project);
+  project = { ...project, creativeProfile: profile };
   if (typeof taskId !== 'string' || !/^[A-Za-z0-9._:-]+$/.test(taskId)) throw new Error('任务标记无效');
   const details = [
     phase === 'polish' && sourceKind === 'idea' ? '来源内容类型：思路。只润色当前思路，保持思路结构，不扩成大纲或完整剧本。' : '',

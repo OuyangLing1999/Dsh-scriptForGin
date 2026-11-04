@@ -9,7 +9,7 @@ await writeFile(corePath, update);
 const strip = (source) => source.replace(/^export /gm, '');
 const wb = strip(await readFile(new URL('workbench-core.js', root), 'utf8'));
 const io = strip(await readFile(new URL('io-core.js', root), 'utf8'));
-const wbExports = ['createProject','validateProject','exportBackup','importBackup','buildPrompt','validateScript','compareVersions','diffLines','saveCatalog'];
+const wbExports = ['normalizeTags','resolveCreativeProfile','createProject','validateProject','exportBackup','importBackup','buildPrompt','validateScript','compareVersions','diffLines','saveCatalog'];
 const shortRoot = new URL('skills/duanshipin-jiaoben/', root);
 const refs = await readdir(new URL('references/', shortRoot));
 const shortRules = [await readFile(new URL('SKILL.md', shortRoot), 'utf8')];
@@ -17,7 +17,7 @@ for (const file of refs.filter((name) => name.endsWith('.md')).sort()) shortRule
 shortRules.push(await readFile(new URL('assets/shooting-script-template.md', shortRoot), 'utf8'));
 const liveRules = await readFile(new URL('skills/elderly-livestream-script/SKILL.md', root), 'utf8');
 const humanize = strip(await readFile(new URL('humanize-rules.js', root), 'utf8'));
-const model = strip(await readFile(new URL('workbench-model.js', root), 'utf8')).replace("import { buildPrompt } from './workbench-core.js';", 'const { buildPrompt } = WB;');
+const model = strip(await readFile(new URL('workbench-model.js', root), 'utf8')).replace(/import \{([^}]+)\} from '\.\/workbench-core\.js';/, 'const {$1} = WB;');
 const installer = strip(await readFile(new URL('update-install.js', root), 'utf8'));
 const humanizeCore = strip(await readFile(new URL('humanize-core.js', root), 'utf8')).replace("import { HUMANIZE_RULES, HUMANIZE_PATTERNS } from './humanize-rules.js';", '');
 const analysis = strip(await readFile(new URL('workbench-analysis.js', root), 'utf8'));

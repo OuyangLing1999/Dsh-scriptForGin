@@ -229,8 +229,8 @@ test('extraction final request contains JSON contract without contradictory audi
 
 test('real embedded full skill is absent from auxiliary final requests', async () => {
   const liveRules = await readFile(new URL('../skills/elderly-livestream-script/SKILL.md', import.meta.url), 'utf8');
-  assert.match(finalRequest('live', 'full', { liveRules }), /单段台词不少于 200 字/);
+  assert.match(finalRequest('live', 'full', { liveRules }), /每段正式角色台词不少于 200 个汉字/);
   for (const phase of ['idea', 'outline', 'audit', 'persona', 'polish']) {
-    assert.doesNotMatch(finalRequest('live', phase, { liveRules }), /单段台词不少于 200 字|# 老年观众直播间剧本创作规范/);
+    assert.doesNotMatch(finalRequest('live', phase, { liveRules }), /每段正式角色台词不少于 200 个汉字|# 老年观众直播间剧本创作规范/);
   }
 });

@@ -32,6 +32,17 @@ window.__ModuleLoader__.load({
     const fontScaleKey = "dsh-script.fontScale.v1";
     const hintKey = "dsh-script.hint.v1";
     const onboardKey = "dsh-script.onboard.v1";
+    const favoriteTagsKey = "dsh-script.favoriteTags.v1";
+    const topicPresets = ["家庭情感", "退休生活", "怀旧故事", "生活知识", "防诈骗", "兴趣才艺", "旅行见闻", "邻里日常"];
+    const stylePresets = ["幽默", "温暖", "纪实", "干货", "克制", "接地气"];
+    function loadFavoriteTags() {
+      try {
+        const value = JSON.parse(localStorage.getItem(favoriteTagsKey) || "{}");
+        return { themeTags: WB.normalizeTags(value?.themeTags), styleTags: WB.normalizeTags(value?.styleTags) };
+      } catch {
+        return { themeTags: [], styleTags: [] };
+      }
+    }
     const modeLabels = { live: "直播创作", "live-opt": "直播优化", "duan-ba": "视频扒片", "duan-adapt": "短视频改编" };
     function blankProject(title = "新剧本项目") {
       return WB.createProject({
@@ -54,7 +65,7 @@ window.__ModuleLoader__.load({
       });
     }
     function hydrateProject(value) {
-      const p = { ...blankProject(), ...value };
+      const p = { ...blankProject(), ...value, creativeProfile: WB.resolveCreativeProfile(value) };
       for (const key of ["topic", "notes", "videoPath", "sessionId", "videoEvidence", "fingerprint", "outline", "persona"]) if (typeof p[key] !== "string") p[key] = "";
       p.brief = Object.fromEntries(Object.entries(p.brief).map(([key, entry]) => [key, Array.isArray(entry) ? entry.join("\n") : entry]));
       p.autoRepair = p.autoRepair === true;
@@ -110,6 +121,59 @@ window.__ModuleLoader__.load({
         h(rows ? "textarea" : "input", { ...props, value, placeholder, rows, style: input, onChange: (event) => onChange(event.target.value) })
       );
     }
+    function AudienceEditor({ value, onChange }) {
+      const [draft, setDraft] = useState(value);
+      useEffect(() => setDraft(value), [value]);
+      return h(Field, {
+        label: "目标受众",
+        value: draft,
+        maxLength: 200,
+        onChange: setDraft,
+        onBlur: () => {
+          const next = draft.trim() || value;
+          setDraft(next);
+          if (next !== value) onChange(next);
+        },
+        placeholder: "例如：50岁以上中老年人，城市退休人群"
+      });
+    }
+    function TagEditor({ label, field, tags, presets, favorites, onChange, onSave, onForget, onNotice }) {
+      const [draft, setDraft] = useState("");
+      const add = (value) => {
+        const raw = value.split(/[,，、;；\n]+/).map((item) => item.trim()).filter(Boolean);
+        if (raw.some((tag) => tag.length > 40) || WB.normalizeTags([...tags, ...raw]).length < new Set([...tags, ...raw].map((tag) => tag.toLowerCase())).size) {
+          onNotice("每组最多12个标签，每个标签最多40字；超出部分未添加。");
+        }
+        onChange(WB.normalizeTags([...tags, ...raw.filter((tag) => tag.length <= 40)]));
+        setDraft("");
+      };
+      return h(
+        "section",
+        { className: "script-tag-editor", "aria-label": label },
+        h("strong", null, label),
+        h(
+          "div",
+          { className: "script-tag-list" },
+          ...tags.map((tag) => h(Button, { key: tag, className: "script-tag-selected", "aria-label": "移除" + label + "：" + tag, onClick: () => onChange(tags.filter((item) => item !== tag)) }, tag + " ×")),
+          !tags.length ? h("span", { className: "script-muted" }, "可留空，按本次选题创作") : null
+        ),
+        h("div", { className: "script-tag-add" }, h("input", { "aria-label": "自定义" + label, value: draft, maxLength: 300, placeholder: "输入标签，回车添加", onChange: (event) => setDraft(event.target.value), onKeyDown: (event) => {
+          if (event.key === "Enter" && !event.nativeEvent?.isComposing) {
+            event.preventDefault();
+            add(draft);
+          }
+        } }), h(Button, { disabled: !draft.trim(), onClick: () => add(draft) }, "添加" + label)),
+        h("div", { className: "script-tag-list" }, h("small", null, "推荐："), ...presets.map((tag) => h(Button, { key: tag, "aria-pressed": tags.includes(tag), onClick: () => tags.includes(tag) ? onChange(tags.filter((item) => item !== tag)) : add(tag) }, tag))),
+        h(
+          "details",
+          { className: "script-tag-favorites" },
+          h("summary", null, "我的常用" + label + "（当前浏览器）"),
+          h(Button, { disabled: !tags.length, onClick: () => onSave(field, tags) }, "将已选" + label + "存为常用"),
+          !favorites.length ? h("p", { className: "script-muted" }, "保存后可在其他项目中点选复用。") : null,
+          h("div", { className: "script-tag-list" }, ...favorites.map((tag) => h("span", { key: tag, className: "script-tag-favorite" }, h(Button, { onClick: () => add(tag) }, tag), h(Button, { "aria-label": "删除常用" + label + "：" + tag, onClick: () => onForget(field, tag) }, "×"))))
+        )
+      );
+    }
     function MainPanel({ ctx }) {
       const [store, setStore] = useState(loadCatalog);
       const revisionRef = useRef(store.revision || 0);
@@ -136,6 +200,8 @@ window.__ModuleLoader__.load({
       const [sampleTagFilter, setSampleTagFilter] = useState("");
       const [characterPick, setCharacterPick] = useState({});
       const [fieldErrors, setFieldErrors] = useState({});
+      const [favoriteTags, setFavoriteTags] = useState(loadFavoriteTags);
+      const [useProjectProfile, setUseProjectProfile] = useState(false);
       const [fontScale, setFontScale] = useState(() => {
         try {
           return localStorage.getItem(fontScaleKey) || "normal";
@@ -173,6 +239,33 @@ window.__ModuleLoader__.load({
       }, []);
       function change(patch, id = projectRef.current.id) {
         setStore((current) => ({ ...current, projects: current.projects.map((p) => p.id === id ? { ...p, ...patch, updatedAt: (/* @__PURE__ */ new Date()).toISOString() } : p) }));
+      }
+      function saveFavoriteTags(field, tags, remove = false) {
+        const latest = loadFavoriteTags();
+        const next = { ...latest, [field]: remove ? latest[field].filter((tag) => tag !== tags) : WB.normalizeTags([...latest[field], ...tags]) };
+        try {
+          localStorage.setItem(favoriteTagsKey, JSON.stringify(next));
+          setFavoriteTags(next);
+          setNotice(remove ? "已删除常用标签，项目已选标签保留。" : "常用标签已保存，可跨项目复用。每组最多12个。");
+        } catch (error) {
+          setNotice("常用标签保存失败：" + error.message);
+        }
+      }
+      function changeProfile(patch) {
+        change({ creativeProfile: { ...WB.resolveCreativeProfile(project), ...patch } });
+      }
+      function creativeProfileView() {
+        const profile = WB.resolveCreativeProfile(project);
+        return h(
+          "section",
+          { style: card, className: "script-creative-profile" },
+          h("h2", null, "创作定位"),
+          h("p", { className: "script-muted" }, "受众、题材与风格分别设置。标签指导创作，本次选题和明确修改要求优先。"),
+          h(AudienceEditor, { key: project.id, value: profile.audience, onChange: (audience) => changeProfile({ audience }) }),
+          h("p", { className: "script-muted" }, "内容形式：" + (project.mode.startsWith("live") ? "直播连麦 · 角色对白与话轮交接" : "短视频拍摄稿 · 场次、镜头与时长") + "。工作模式决定操作，题材标签决定写什么。"),
+          ...[["themeTags", "题材标签", topicPresets], ["styleTags", "风格标签", stylePresets]].map(([field, label, presets]) => h(TagEditor, { key: project.id + field, field, label, presets, tags: profile[field], favorites: favoriteTags[field], onChange: (tags) => changeProfile({ [field]: tags }), onSave: saveFavoriteTags, onForget: (key, tag) => saveFavoriteTags(key, tag, true), onNotice: setNotice })),
+          h("small", { className: "script-muted" }, "每组最多12个标签，每个最多40字。样稿库标签只用于筛选参考，与这里分别保存。")
+        );
       }
       function changeBrief(key, value) {
         change({ brief: { ...project.brief, [key]: value } });
@@ -235,6 +328,7 @@ window.__ModuleLoader__.load({
       useEffect(() => {
         setEditing(false);
       }, [selectedVersion]);
+      useEffect(() => setUseProjectProfile(false), [project.id, selectedVersion]);
       useEffect(() => {
         if (!searchQuery.trim()) return;
         const el = document.querySelector(".script-search-current");
@@ -354,6 +448,8 @@ window.__ModuleLoader__.load({
         const edit = ["revision", "audit", "outline-opt", "idea-opt", "polish"].includes(phase);
         const sourceVersion = override?.sourceVersion || (edit ? WM.resolveVersion(p, p.id === projectRef.current.id ? selectedVersion : "") : null);
         if ((edit || override?.sourceVersion) && sourceVersion?.mode) p.mode = sourceVersion.mode;
+        const overrideProfile = useProjectProfile && p.id === projectRef.current.id && repairCount === 0;
+        p.creativeProfile = WB.resolveCreativeProfile(sourceVersion && !overrideProfile ? sourceVersion : p);
         if (p.sessionId && storeRef.current.projects.some((item) => item.id !== p.id && item.sessionId === p.sessionId && item.pending)) {
           setNotice("关联会话正用于另一个项目，请等待完成或选择独立会话。");
           return;
@@ -394,8 +490,10 @@ window.__ModuleLoader__.load({
           }
           const text = retryRequest ? retryRequest.text.replace(/\[DSH_SCRIPT_TASK:[^\]\r\n]+\]/, () => "[DSH_SCRIPT_TASK:" + taskId + "]") : WM.buildTaskText({
             taskId,
+            sourceVersion,
+            creativeProfile: p.creativeProfile,
             artifactKind: sourceVersion ? WM.artifactKind(sourceVersion) : void 0,
-            project: { ...p, brief: { ...p.brief, conflict: p.brief.conflict || p.topic } },
+            project: p,
             phase,
             draft: source,
             instruction: [instruction, taskFiles.length ? "已附文件：" + taskFiles.map((f) => f.name).join("、") + "。使用可用工具读取，区分可见事实与不确定项。" : ""].filter(Boolean).join("\n"),
@@ -404,9 +502,9 @@ window.__ModuleLoader__.load({
             humanizeRules: HUMANIZE_RULES
           });
           const kind = ["idea", "idea-opt"].includes(phase) ? "idea" : ["outline", "outline-opt"].includes(phase) ? "outline" : phase === "audit" ? "report" : edit ? WM.artifactKind(sourceVersion) : "script";
-          request = { text, parts, sessionId: target, mode: p.mode, sourceVersionId: sourceVersion?.id || "", artifactKind: kind, sourceVersion: sourceVersion ? { id: sourceVersion.id, mode: sourceVersion.mode, phase: sourceVersion.phase, artifactKind: WM.artifactKind(sourceVersion) } : null };
+          request = { text, parts, sessionId: target, creativeProfile: p.creativeProfile, mode: p.mode, sourceVersionId: sourceVersion?.id || "", artifactKind: kind, sourceVersion: sourceVersion ? { id: sourceVersion.id, mode: sourceVersion.mode, phase: sourceVersion.phase, artifactKind: WM.artifactKind(sourceVersion), creativeProfile: WB.resolveCreativeProfile(sourceVersion) } : null };
           if (retryRequest) request = { ...retryRequest, text, parts };
-          const pending = { taskId, phase, repairCount, submittedAt: Date.now(), mode: request.mode || p.mode, instruction, sourceVersionId: request.sourceVersionId, artifactKind: request.artifactKind, sourceVersion: request.sourceVersion, request };
+          const pending = { taskId, phase, repairCount, submittedAt: Date.now(), mode: request.mode || p.mode, creativeProfile: request.creativeProfile || p.creativeProfile, instruction, sourceVersionId: request.sourceVersionId, artifactKind: request.artifactKind, sourceVersion: request.sourceVersion, request };
           change({ sessionId: target, pending, retry: null }, p.id);
           setTaskStatus("提交到会话");
           const reference = ctx.sessions.retain(target, { source: "controllerOperation" });
@@ -584,7 +682,8 @@ window.__ModuleLoader__.load({
               }, placeholder: "选题、核心矛盾或本次编导意图" }),
               err("topic"),
               h("div", { style: { margin: "-2px 0 10px" } }, h(Button, { onClick: () => {
-                change({ topic: "儿子春节不回家，母亲嘴上说理解心里委屈，最后通过连麦把话说开" });
+                const themes = WB.resolveCreativeProfile(project).themeTags.join("、");
+                change({ topic: themes.includes("防诈骗") ? "连麦聊聊冒充老同学借钱的电话，说明核实身份的具体方法" : themes.includes("家庭") || themes.includes("情感") ? "儿子春节不回家，母亲嘴上说理解心里委屈，最后通过连麦把话说开" : "几位退休同事第一次结伴出游，分享行程安排与沿途趣事" });
                 setFieldErrors((old) => ({ ...old, topic: "" }));
               } }, "填入示例选题")),
               h(Field, { label: "原稿 / 母版 / 已有思路", value: project.draft, rows: 10, onChange: (draft) => {
@@ -615,11 +714,12 @@ window.__ModuleLoader__.load({
           h(
             "aside",
             null,
+            creativeProfileView(),
             h(
               "section",
               { style: card },
               h("h2", null, "创作约束"),
-              ...[["relationship", "人物关系"], ["conflict", "核心冲突"], ["goals", "角色诉求"], ["ending", "结尾方向"], ["lockedFacts", "锁定事实 / 情节"], ["protectedLines", "保护台词（逐字保留）"]].map(([key, label]) => h(Field, { key, label, rows: ["lockedFacts", "protectedLines"].includes(key) ? 3 : 2, value: project.brief[key], onChange: (value) => changeBrief(key, value) })),
+              ...[["relationship", "人物关系 / 参与者"], ["conflict", "核心问题 / 冲突"], ["goals", "表达目标 / 角色诉求"], ["ending", "收束 / 结尾方向"], ["lockedFacts", "锁定事实 / 情节"], ["protectedLines", "保护台词（逐字保留）"]].map(([key, label]) => h(Field, { key, label, rows: ["lockedFacts", "protectedLines"].includes(key) ? 3 : 2, value: project.brief[key], onChange: (value) => changeBrief(key, value) })),
               h("label", null, "优化力度", h("select", { style: input, value: project.intensity, onChange: (e) => change({ intensity: e.target.value }) }, h("option", { value: "light" }, "轻修 · 保留顺序与情节"), h("option", { value: "structure" }, "结构调整 · 保留核心因果"), h("option", { value: "deep" }, "重构 · 保留锁定项"))),
               h("label", { style: { display: "block", marginTop: 8 } }, h("input", { type: "checkbox", checked: project.autoRepair, onChange: (e) => change({ autoRepair: e.target.checked }) }), " 格式问题自动返修一次（额外调用 AI）")
             ),
@@ -648,9 +748,9 @@ window.__ModuleLoader__.load({
                   setNotice("请先粘贴你的人设。");
                   return;
                 }
-                submitTask("persona", "优化下面这段人设，使其更适合 60 岁以上老年观众直播：保留真实信息，强化身份、性格、说话风格、与观众的关系和记忆点。只输出优化后的人设文字，不要解释。\n\n原人设：\n" + project.persona);
+                submitTask("persona", "优化下面这段人设，贴合本项目的目标受众、题材与风格：保留真实信息，强化身份、性格、说话风格、与观众的关系和记忆点。只输出优化后的人设文字，不要解释。\n\n原人设：\n" + project.persona);
               } }, "优化我的人设"),
-              h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask("persona", "根据主题生成一个适合 60 岁以上老年观众直播的主播人设，包含称呼、年龄感、身份背景、性格、说话风格、口头禅、与观众的关系、擅长话题。只输出人设文字。\n\n主题：" + (project.topic || "孝道与家庭伦理")) }, "给我一个人设")
+              h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask("persona", "根据本项目受众、题材和风格生成一个主播人设，包含称呼、年龄感、身份背景、性格、说话风格、口头禅、与观众的关系、擅长话题。只输出人设文字。\n\n主题：" + (project.topic || "按创作定位自主选择合适话题")) }, "给我一个人设")
             ),
             project.personaDraft ? h(
               "div",
@@ -705,7 +805,8 @@ window.__ModuleLoader__.load({
               ...[["name", "姓名 / 称呼"], ["relationship", "身份与关系"], ["goal", "当场诉求和顾虑"], ["knowledge", "知道什么 / 不知道什么"], ["voice", "说话习惯"], ["state", "已发生事情与当前态度"]].map(([key, label]) => h(Field, { key, label, value: person[key] || "", onChange: (value) => updateItem("characters", person.id, { [key]: value }) })),
               h(Button, { onClick: () => change({ characters: project.characters.filter((item) => item.id !== person.id) }) }, "移除此人物")
             )),
-            h(Button, { onClick: () => change({ characters: [...project.characters, { id: uid(), name: "", relationship: "", goal: "", knowledge: "", voice: "", state: "" }] }) }, "添加人物卡"), !project.characters.length ? h("p", { className: "script-muted" }, "先建主播人设和一张人物卡，AI 生成与返修会沿用这些设定。") : null
+            h(Button, { onClick: () => change({ characters: [...project.characters, { id: uid(), name: "", relationship: "", goal: "", knowledge: "", voice: "", state: "" }] }) }, "添加人物卡"),
+            !project.characters.length ? h("p", { className: "script-muted" }, "先建主播人设和一张人物卡，AI 生成与返修会沿用这些设定。") : null
           ),
           h(
             "div",
@@ -795,7 +896,7 @@ window.__ModuleLoader__.load({
               setCompareId("");
             } }, ...project.versions.map((v, i) => h("option", { key: v.id, value: v.id }, "v" + (i + 1) + " · " + { idea: "思路", outline: "大纲", script: "剧本" }[WM.artifactKind(v)] + " · " + (v.id === project.currentVersionId ? "已采用 · " : "") + new Date(v.createdAt).toLocaleString())))) : null,
             editing && chosen ? h("div", null, h(Field, { label: "编辑稿件", value: project.editBuffers?.[chosen.id] ?? output, rows: 22, onChange: (text) => change({ editBuffers: { ...project.editBuffers, [chosen.id]: text } }) }), h("div", { style: row }, h(Button, { primary: true, onClick: () => {
-              const v = { id: uid(), text: project.editBuffers?.[chosen.id] ?? output, phase: "manual", artifactKind: kind, mode, sourceVersionId: chosen.id, createdAt: (/* @__PURE__ */ new Date()).toISOString() };
+              const v = { id: uid(), text: project.editBuffers?.[chosen.id] ?? output, phase: "manual", artifactKind: kind, mode, creativeProfile: WB.resolveCreativeProfile(chosen), sourceVersionId: chosen.id, createdAt: (/* @__PURE__ */ new Date()).toISOString() };
               change({ versions: [...project.versions, v] });
               setSelectedVersion(v.id);
               setEditing(false);
@@ -831,7 +932,7 @@ window.__ModuleLoader__.load({
                 } }, "收入样稿库")
               ))
             ) : project.draft ? h(Button, { primary: true, onClick: () => {
-              const v = { id: uid(), text: project.draft, phase: "manual", artifactKind: project.deliverable, mode: project.mode, createdAt: (/* @__PURE__ */ new Date()).toISOString() };
+              const v = { id: uid(), text: project.draft, phase: "manual", artifactKind: project.deliverable, mode: project.mode, creativeProfile: WB.resolveCreativeProfile(project), createdAt: (/* @__PURE__ */ new Date()).toISOString() };
               change({ versions: [...project.versions, v], currentVersionId: v.id });
               setSelectedVersion(v.id);
             } }, "载入原稿到工作区") : h(Button, { onClick: () => setTab("create") }, "打开创作简报"),
@@ -845,11 +946,12 @@ window.__ModuleLoader__.load({
               { style: card },
               h("h2", null, "编导指令"),
               h("p", { className: "script-muted" }, "基于当前浏览稿生成新版本，锁定项始终保留。"),
+              chosen ? h("div", { className: "script-source-profile" }, h("small", null, "来源受众：" + WB.resolveCreativeProfile(chosen).audience + "；题材：" + (WB.resolveCreativeProfile(chosen).themeTags.join("、") || "开放") + "；风格：" + (WB.resolveCreativeProfile(chosen).styleTags.join("、") || "按稿件")), h("label", null, h("input", { type: "checkbox", checked: useProjectProfile, onChange: (event) => setUseProjectProfile(event.target.checked) }), " 本次改用当前项目创作定位")) : null,
               selection ? h("div", { className: "script-selection" }, h("strong", null, "已选文字"), h("p", null, selection.slice(0, 200) + (selection.length > 200 ? "…" : "")), h(Button, { onClick: () => setSelection("") }, "清除选择")) : null,
               h(Field, { label: "修改意图", value: revision, rows: 5, onChange: setRevision, placeholder: "例如：第3段情绪推进太快，补一层犹豫；保留结尾和金额。" }),
               segments.length ? h("label", null, "返修范围", h("select", { style: input, value: reviseSegment, onChange: (e) => setReviseSegment(e.target.value) }, h("option", { value: "" }, "全文"), ...segments.map((match, i) => h("option", { key: i, value: String(i + 1) }, "第" + (i + 1) + (mode.startsWith("live") ? "段 · " : "场 · ") + match[0])))) : null,
               h(Button, { primary: true, disabled: busy || !!project.pending || !output || !revision.trim(), onClick: () => submitTask(phase, [reviseSegment ? "仅修改第" + reviseSegment + (mode.startsWith("live") ? "段话轮" : "场") + "，其余保持原样。" : "", selection ? "仅修改以下选中文字，返回包含修改的完整稿件，其他内容保持原样：\n" + selection : "", revision].filter(Boolean).join("\n")) }, kind === "script" ? "定向返修" : "优化" + { idea: "思路", outline: "大纲" }[kind]),
-              h("div", { style: { ...row, marginTop: 12 } }, h(Button, { disabled: busy || !!project.pending || !output, onClick: () => submitTask("polish", "仅润色当前稿件，保持其内容类型与结构。") }, "文字润色"), h(Button, { disabled: busy || !!project.pending || !output, onClick: () => submitTask("audit", "按位置、问题、依据、修复建议审稿；关注人物动机、信息递进、对白与因果。") }, "AI 审稿")),
+              h("div", { style: { ...row, marginTop: 12 } }, h(Button, { disabled: busy || !!project.pending || !output, onClick: () => submitTask("polish", "仅润色当前稿件，保持其内容类型与结构。") }, "文字润色"), h(Button, { disabled: busy || !!project.pending || !output, onClick: () => submitTask("audit", "按位置、问题、依据、修复建议审稿；结合目标受众、题材和风格，核对事实依据、信息递进、对白与衔接；仅在剧情需要时评估人物动机和情绪。") }, "AI 审稿")),
               kind === "idea" && output ? h("div", { className: "script-actionbar" }, h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask("outline", "基于此思路生成结构大纲。", 0, { ...project, draft: output, sourceVersion: chosen, deliverable: "outline" }) }, "扩成大纲")) : null,
               ["idea", "outline"].includes(kind) && output ? h("div", { className: "script-actionbar" }, h(Button, { disabled: busy || !!project.pending, onClick: () => submitTask("full", "基于当前稿件扩写完整剧本，保留已确定事实与结尾。", 0, { ...project, draft: output, sourceVersion: chosen, deliverable: "script" }) }, "扩成剧本"), kind === "outline" ? h(Button, { onClick: () => {
                 change({ outline: output });
@@ -893,7 +995,10 @@ window.__ModuleLoader__.load({
             "div",
             { style: card },
             h("p", { className: "script-muted" }, "版本 " + CURRENT_VERSION),
-            h("div", { style: row }, h(Button, { disabled: checking, onClick: checkUpdate }, checking ? "检查中…" : "检查更新"), h(Button, { onClick: () => setShowHint(!showHint) }, "工作台说明"), h(Button, { onClick: () => { setOnboard(true); setTab("create"); } }, "重新打开引导"), h(Button, { onClick: () => {
+            h("div", { style: row }, h(Button, { disabled: checking, onClick: checkUpdate }, checking ? "检查中…" : "检查更新"), h(Button, { onClick: () => setShowHint(!showHint) }, "工作台说明"), h(Button, { onClick: () => {
+              setOnboard(true);
+              setTab("create");
+            } }, "重新打开引导"), h(Button, { onClick: () => {
               const next = fontScale === "large" ? "normal" : "large";
               setFontScale(next);
               try {
@@ -913,7 +1018,9 @@ window.__ModuleLoader__.load({
           { className: "script-onboard", "aria-label": "上手引导" },
           h("div", { className: "script-section-heading" }, h("h2", null, "从哪儿开始？"), h(Button, { onClick: dismissOnboard }, "跳过引导")),
           h("p", { className: "script-muted" }, "有稿直接改，没稿从一句话选题开始；也可以先看一个完整示例，理解四个分区。"),
-          h("div", { className: "script-onboard-actions" },
+          h(
+            "div",
+            { className: "script-onboard-actions" },
             h(Button, { primary: true, onClick: () => {
               setTab("create");
               dismissOnboard();

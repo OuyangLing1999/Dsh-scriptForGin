@@ -1,6 +1,6 @@
 {
   "name": "@local/elderly-script",
-  "version": "2.9.0",
+  "version": "2.10.0",
   "devDependencies": {
     "zod": "4.4.3",
     "esbuild": "0.25.12",
