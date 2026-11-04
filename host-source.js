@@ -7,7 +7,7 @@ export function apply(ctx) {
     seq: z.number().int(), turn: z.number().int(), phase: z.string(),
   });
   ctx.sessionProjections.register({
-    key: 'scriptWorkbench', stateSchema: schema, stateVersion: 1,
+    key: 'scriptWorkbench', stateSchema: schema, stateVersion: 2,
     init: initResultState, apply: reduceResult,
     wire: { viewSchema: schema, view: (state) => state },
   });

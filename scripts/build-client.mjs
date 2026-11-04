@@ -17,7 +17,17 @@ for (const file of refs.filter((name) => name.endsWith('.md')).sort()) shortRule
 shortRules.push(await readFile(new URL('assets/shooting-script-template.md', shortRoot), 'utf8'));
 const liveRules = await readFile(new URL('skills/elderly-livestream-script/SKILL.md', root), 'utf8');
 const humanize = strip(await readFile(new URL('humanize-rules.js', root), 'utf8'));
+const model = strip(await readFile(new URL('workbench-model.js', root), 'utf8')).replace("import { buildPrompt } from './workbench-core.js';", 'const { buildPrompt } = WB;');
+const installer = strip(await readFile(new URL('update-install.js', root), 'utf8'));
+const humanizeCore = strip(await readFile(new URL('humanize-core.js', root), 'utf8')).replace("import { HUMANIZE_RULES, HUMANIZE_PATTERNS } from './humanize-rules.js';", '');
+const analysis = strip(await readFile(new URL('workbench-analysis.js', root), 'utf8'));
+const css = await readFile(new URL('workbench.css', root), 'utf8');
 let client = await readFile(new URL('client-ui.js', root), 'utf8');
+client = client.replace('/* WORKBENCH_ANALYSIS */', () => 'const AN = (() => {\n' + analysis + '\nreturn {analyzeRoles,findMatches,buildExampleProject};\n})();');
+client = client.replace('/* WORKBENCH_MODEL */', () => 'const WM = (() => {\n' + model + '\nreturn {artifactKind,normalizeProject,resolveVersion,revisionPhase,archiveResult,buildTaskText,forkProject};\n})();');
+client = client.replace('/* UPDATE_INSTALL */', () => 'const UI = (() => {\n' + installer + '\nreturn {resolveInstallTarget,verifyInstalledVersion};\n})();');
+client = client.replace('/* HUMANIZE_CORE */', () => 'const HC = (() => {\n' + humanizeCore + '\nreturn {checkHumanize};\n})();');
+client = client.replace('/* WORKBENCH_CSS */', () => 'const WORKBENCH_CSS = ' + JSON.stringify(css) + ';');
 client = client.replace('/* WORKBENCH_CORE */', () => 'const WB = (() => {\n' + wb + '\nreturn {' + wbExports.join(',') + '};\n})();');
 client = client.replace('/* IO_CORE */', () => 'const IO = (() => {\n' + io + '\nreturn {buildDocxBytes,readDocxText};\n})();');
 client = client.replace('/* UPDATE_CORE */', () => strip(update));

@@ -24,6 +24,8 @@ export function reduceResult(state, event) {
   if (!event || !event.data) return state;
   const { data } = event;
   if (event.type === 'user/message') {
+    // Host contexts and notices share this event type with real user input.
+    if (data.source?.kind !== 'user') return state;
     const text = textContent(data.content);
     const task = /\[DSH_SCRIPT_TASK:([^\]\r\n]+)\]/.exec(text);
     if (task && task[1].trim()) {

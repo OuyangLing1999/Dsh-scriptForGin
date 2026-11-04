@@ -92,6 +92,33 @@ test('unmarked subsequent user turn detaches without replacing the result', () =
   assert.equal(reduceResult(initResultState(), assistant(1, 1, [text('unbound')] )).taskId, '');
 });
 
+test('only real user sources can bind or detach tasks', () => {
+  const sources = [{ kind: 'runtime-context' }, { kind: 'notice' }, { kind: 'tool' }, { kind: 'model' }, {}, undefined];
+  for (const source of sources) {
+    for (const value of ['context without marker', '[DSH_SCRIPT_TASK:injected]']) {
+      const input = freeze(event('user/message', 2, { source, content: [text(value)] }));
+      const initial = freeze(initResultState());
+      assert.equal(reduceResult(initial, input), initial);
+      const bound = freeze(bind());
+      assert.equal(reduceResult(bound, input), bound);
+    }
+  }
+});
+
+test('actual Host sequence retains task through runtime context and completes', () => {
+  const result = fold([
+    event('turn/start', 1, { turn: 9 }),
+    user(2, '[DSH_SCRIPT_TASK:host-task]\n[DSH_SCRIPT_PHASE:full]'),
+    event('user/message', 3, { source: { kind: 'runtime-context' }, content: [text('Current runtime context')] }),
+    assistant(4, 9, [text('finished script')]),
+    event('user/message', 5, { source: { kind: 'notice' }, content: [text('[DSH_SCRIPT_TASK:wrong]')] }),
+    event('turn/end', 6, { turn: 9, reason: { kind: 'completed' } }),
+  ]);
+  assert.deepEqual(result, { taskId: 'host-task', phase: 'full', text: 'finished script', done: true, error: '', seq: 6, turn: 9 });
+  const later = reduceResult(result, event('user/message', 7, { source: { kind: 'runtime-context' }, content: [text('refresh')] }));
+  assert.equal(later, result);
+});
+
 test('markers inside reasoning or tool content never bind and inputs stay immutable', () => {
   const state = freeze(initResultState());
   const input = freeze({ ...user(1, ''), data: { role: 'user', source: { kind: 'user' },

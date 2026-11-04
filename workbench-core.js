@@ -43,6 +43,19 @@ export function validateProject(value) {
     }
   }
   if (!Array.isArray(value.selectedSampleIds) || !value.selectedSampleIds.every(id => typeof id === 'string' && Array.isArray(value.samples) && value.samples.some(sample => sample?.id === id))) errors.push('selectedSampleIds 引用了不存在的样本');
+  for (const key of ['reports', 'materials']) {
+    if (value[key] === undefined) continue;
+    if (!Array.isArray(value[key])) { errors.push(key + ' 必须是列表'); continue; }
+    const ids = new Set();
+    for (const item of value[key]) {
+      if (!plain(item) || typeof item.id !== 'string' || !item.id || ids.has(item.id) || typeof item.text !== 'string') { errors.push(key + ' 项目格式无效'); continue; }
+      ids.add(item.id);
+      if (key === 'materials' && typeof item.name !== 'string') errors.push('素材名称必须是文本');
+    }
+  }
+  if (value.editBuffers !== undefined && (!plain(value.editBuffers) || Object.values(value.editBuffers).some(text => typeof text !== 'string'))) errors.push('editBuffers 必须是文本映射');
+  for (const sample of Array.isArray(value.samples) ? value.samples : []) if (sample?.tags !== undefined && (!Array.isArray(sample.tags) || !sample.tags.every(tag => typeof tag === 'string'))) errors.push('样稿标签必须是文本列表');
+  for (const key of ['pending', 'retry']) if (value[key] != null && (!plain(value[key]) || !PHASES.includes(value[key].phase) || (key === 'pending' && typeof value[key].taskId !== 'string'))) errors.push(key + ' 任务格式无效');
   return { ok: errors.length === 0, errors };
 }
 
@@ -137,8 +150,15 @@ export function buildPrompt(options = {}) {
   }
   if (strict && mode === 'duan-ba') lines.push('扒片：先按时间整理可见/可听证据表，再记录结构指纹；原片实际时长为基准，估算明确标注。');
   if (strict && mode === 'duan-adapt') lines.push('改编：先做母版结构项→新故事实现→锁定→冲突/补偿对照；保留钩子、功能位、阻力与证据递进、空间推进、阶段奖励、兑现和结尾债务；默认母版时长±15%，用户指定优先。');
-  if (mode === 'live-opt' || phase === 'revision') lines.push('优化强度：' + intensity + '。' + ({ light: '仅修口语、赘句和交接，保留顺序与情节。', structure: '允许调整话轮和信息顺序，保留核心关系、因果与结局。', deep: '允许重构节奏和场景，逐项说明变更理由；锁定事实与保护台词仍保持。' })[intensity]);
-  lines.push(({ idea: '只给创作思路与方向，不写完整台词：用分点输出 1.一句话卖点 2.核心冲突（谁和谁、争什么）3.主播/一麦/二麦各自诉求 4.2-3个可用转折或爆点 5.结尾方向与续集钩子 6.3条可延展的系列选题。', 'idea-opt': '只优化思路方向，不写完整台词：调整选题角度、冲突与人物诉求、可用转折和结尾钩子；保留已确定的事实、人物与结局方向，没有问题的部分不改，默认只输出优化后的思路。', outline: '只给大纲：给出结构骨架与分场/分段清单，不写完整台词。直播稿按话轮提纲（谁先开口、谁接话、第几段反转、哪里落泪、怎么收尾，标注功能与情绪走向）；短视频按场次骨架（位置、事件、冲突升级、证据或反转、结尾钩子、预计时长）。', 'outline-opt': '只优化大纲结构，不写完整台词：调整话轮或场次顺序、冲突升级节奏、爆点与钩子位置、结尾收束；保留人物、事实和结局方向，没有问题的部分不改，默认只输出优化后的大纲。', full: live ? '本阶段只交付完整纯对白正文；输出前自查字数、交接和事实一致性，检查说明留待独立审稿，不混入正文。' : '本阶段交付完整正文；先按本模式协议自查，再明确尚待人工核实的事项。', revision: live ? '依据当前稿与修改要求只交付修订后的完整纯对白，不附修改清单或检查报告。' : '本阶段依据当前稿与修改要求交付修订正文，并给简短修改清单。', audit: '本阶段只审校，按位置/问题/依据/修复建议列出，不代写全文；区分机器可核对项与人工判断项。', persona: '只输出人设文字，不写剧本台词：包含称呼、年龄感、身份背景、性格、说话风格、口头禅、与观众的关系、擅长话题。', polish: '只做文字润色：删除空话、重复、拔高、客服腔和模板化表达，不扩写、不补论据、不重写观点；保留全部事实、确定程度和作者语气，没有问题的句子不改；默认只输出最终润色稿。' })[phase]);
+  if ((phase === 'full' || phase === 'revision') && (mode === 'live-opt' || phase === 'revision')) lines.push('优化强度：' + intensity + '。' + ({ light: '仅修口语、赘句和交接，保留顺序与情节。', structure: '允许调整话轮和信息顺序，保留核心关系、因果与结局。', deep: '允许重构节奏和场景，逐项说明变更理由；锁定事实与保护台词仍保持。' })[intensity]);
+  const stageRules = {
+    idea: live ? '只给创作思路与方向，不写完整台词：列出一句话主题、生活矛盾、主播与连麦人物各自诉求、生活细节、情绪递进、结尾回应和可延展选题。不设置悬疑、反转、双关或伏笔。' : '只给创作思路与方向，不写完整台词：列出一句话卖点、核心冲突、主要人物诉求、可用转折或爆点、证据递进、结尾钩子和系列选题。',
+    'idea-opt': live ? '只优化思路方向，不写完整台词：调整选题角度、生活矛盾、人物诉求、生活细节、情绪递进和结尾回应；保留已确定的事实、人物与结局方向，不设置悬疑、反转、双关或伏笔，默认只输出优化后的思路。' : '只优化思路方向，不写完整台词：调整选题角度、人物诉求、可用转折、爆点、证据递进和结尾钩子；保留已确定的事实、人物与结局方向，默认只输出优化后的思路。',
+    outline: live ? '只给大纲：按话轮提纲列出谁先开口、谁接话、生活细节、信息递进、情绪走向和结尾回应，不写完整台词；不设置悬疑、反转、双关或伏笔。' : '只给大纲：按场次骨架列出位置、事件、冲突升级、证据或反转、结尾钩子、预计时长和空间推进，不写完整台词。',
+    'outline-opt': live ? '只优化大纲结构，不写完整台词：调整话轮顺序、生活细节、信息递进、情绪走向和结尾回应；保留人物、事实和结局方向，不设置悬疑、反转、双关或伏笔，默认只输出优化后的大纲。' : '只优化大纲结构，不写完整台词：调整场次顺序、冲突升级、爆点与钩子、证据递进、空间推进、预计时长和结尾收束；保留人物、事实和结局方向，默认只输出优化后的大纲。',
+  };
+  const extracting = phase === 'audit' && (options.extractCharacters === true || String(options.instruction || '').includes('[DSH_EXTRACT_CHARACTERS]'));
+  lines.push(stageRules[phase] || (extracting ? '本阶段只提取当前稿中的人物卡草稿，不审稿、不写剧本。只输出 JSON 对象 {"characters":[{"name":"","relationship":"","goal":"","knowledge":"","voice":"","state":""}]}；仅提取来源中有依据的信息，缺失字段用空字符串，不补造人物经历。' : ({ full: live ? '本阶段只交付完整纯对白正文；输出前自查字数、交接和事实一致性，检查说明留待独立审稿，不混入正文。' : '本阶段交付完整正文；先按本模式协议自查，再明确尚待人工核实的事项。', revision: live ? '依据当前稿与修改要求只交付修订后的完整纯对白，不附修改清单或检查报告。' : '本阶段依据当前稿与修改要求交付修订正文，并给简短修改清单。', audit: '本阶段只审校，按位置/问题/依据/修复建议列出，不代写全文；区分机器可核对项与人工判断项。', persona: '只输出人设文字，不写剧本台词：包含称呼、年龄感、身份背景、性格、说话风格、口头禅、与观众的关系、擅长话题。', polish: '只做文字润色：删除空话、重复、拔高、客服腔和模板化表达，不扩写、不补论据、不重写观点；保留全部事实、确定程度和作者语气，没有问题的句子不改；默认只输出最终润色稿。' })[phase]));
   if (samples.length) lines.push('选中且与模式相关的样本（只借鉴结构、口吻，不把样本事实写成用户事实）：\n' + JSON.stringify(samples.map(({ id, title, text, notes }) => ({ id, title, text, notes })), null, 2));
   const draft = options.draft ?? project.draft;
   if (draft) lines.push('当前稿（资料）：\n' + draft);
@@ -239,36 +259,56 @@ export function compareVersions(before, after) {
 // two-pointer walk when the input is too large for the full LCS table.
 export function diffLines(before, after) {
   const asLines = value => str(typeof value === 'object' && value ? value.text : value).replace(/\r\n?/g, '\n').split('\n');
-  const a = asLines(before), b = asLines(after);
-  const make = (blocks) => {
-    let added = 0, removed = 0;
-    for (const block of blocks) { if (block.type === 'add') added++; if (block.type === 'remove') removed++; }
-    return { blocks, added, removed, changed: added > 0 || removed > 0, summary: `新增${added}行，移除${removed}行` };
-  };
-  if (a.length * b.length > 2_000_000) {
-    const blocks = []; let i = 0, j = 0;
-    while (i < a.length || j < b.length) {
-      if (i < a.length && j < b.length && a[i] === b[j]) { blocks.push({ type: 'same', text: a[i] }); i++; j++; }
-      else if (i < a.length) { blocks.push({ type: 'remove', text: a[i] }); i++; }
-      else { blocks.push({ type: 'add', text: b[j] }); j++; }
+  const a = asLines(before), b = asLines(after), blocks = [];
+  let start = 0, endA = a.length, endB = b.length, approximate = false;
+  // Common ends are exact and make isolated edits cheap even for very long scripts.
+  while (start < endA && start < endB && a[start] === b[start]) {
+    blocks.push({ type: 'same', text: a[start] }); start++;
+  }
+  while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) { endA--; endB--; }
+  const n = endA - start, m = endB - start;
+  let i = start, j = start;
+  // Bound actual allocation, including the extra row/column for asymmetric input.
+  if (n && m && (n + 1) * (m + 1) <= 2_000_000) {
+    const stride = m + 1, dp = new Int32Array((n + 1) * stride);
+    for (let x = n - 1; x >= 0; x--) {
+      const row = x * stride, next = (x + 1) * stride;
+      for (let y = m - 1; y >= 0; y--) dp[row + y] = a[start + x] === b[start + y]
+        ? dp[next + y + 1] + 1 : Math.max(dp[next + y], dp[row + y + 1]);
     }
-    return make(blocks);
+    while (i < endA && j < endB) {
+      if (a[i] === b[j]) { blocks.push({ type: 'same', text: a[i++] }); j++; }
+      else if (dp[(i - start + 1) * stride + j - start] >= dp[(i - start) * stride + j - start + 1]) blocks.push({ type: 'remove', text: a[i++] });
+      else blocks.push({ type: 'add', text: b[j++] });
+    }
+  } else if (n && m) {
+    // Bounded lookahead: O(64 * (n + m)) work, no quadratic table or recursion.
+    // This alignment is useful for sparse edits but is not guaranteed minimal.
+    approximate = true;
+    while (i < endA && j < endB) {
+      if (a[i] === b[j]) { blocks.push({ type: 'same', text: a[i++] }); j++; continue; }
+      let remove = 0, add = 0;
+      for (let distance = 1; distance <= 64; distance++) {
+        if (i + distance < endA && a[i + distance] === b[j]) remove = distance;
+        if (j + distance < endB && a[i] === b[j + distance]) add = distance;
+        if (remove || add) break;
+      }
+      if (remove && (!add || remove <= add)) {
+        while (remove--) blocks.push({ type: 'remove', text: a[i++] });
+      } else if (add) {
+        while (add--) blocks.push({ type: 'add', text: b[j++] });
+      } else {
+        blocks.push({ type: 'remove', text: a[i++] }, { type: 'add', text: b[j++] });
+      }
+    }
   }
-  const n = a.length, m = b.length, stride = m + 1;
-  const dp = new Int32Array((n + 1) * stride);
-  for (let i = n - 1; i >= 0; i--) {
-    const row = i * stride, next = (i + 1) * stride;
-    for (let j = m - 1; j >= 0; j--) dp[row + j] = a[i] === b[j] ? dp[next + j + 1] + 1 : Math.max(dp[next + j], dp[row + j + 1]);
-  }
-  const blocks = []; let i = 0, j = 0;
-  while (i < n && j < m) {
-    if (a[i] === b[j]) { blocks.push({ type: 'same', text: a[i] }); i++; j++; }
-    else if (dp[(i + 1) * stride + j] >= dp[i * stride + j + 1]) { blocks.push({ type: 'remove', text: a[i] }); i++; }
-    else { blocks.push({ type: 'add', text: b[j] }); j++; }
-  }
-  while (i < n) { blocks.push({ type: 'remove', text: a[i] }); i++; }
-  while (j < m) { blocks.push({ type: 'add', text: b[j] }); j++; }
-  return make(blocks);
+  while (i < endA) blocks.push({ type: 'remove', text: a[i++] });
+  while (j < endB) blocks.push({ type: 'add', text: b[j++] });
+  for (let suffix = endA; suffix < a.length; suffix++) blocks.push({ type: 'same', text: a[suffix] });
+  let added = 0, removed = 0;
+  for (const block of blocks) { if (block.type === 'add') added++; if (block.type === 'remove') removed++; }
+  return { blocks, added, removed, changed: added > 0 || removed > 0, approximate,
+    summary: `${approximate ? '近似比较：' : ''}新增${added}行，移除${removed}行` };
 }
 
 // Durable Session assistant/message data.message.content or data.stream. Never include reasoning/tool data.
